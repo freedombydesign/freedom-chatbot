@@ -22,12 +22,12 @@ def chat():
         # Add user message to history
         conversation_history.append({"role": "user", "content": user_message})
 
-        # Keep longer history (last 50 messages instead of 10)
-        conversation_history = conversation_history[-50:]
+        # Keep only last 20 messages for context (longer-term memory)
+        conversation_history = conversation_history[-20:]
 
-        # Generate reply from OpenAI
+        # Use GPT-4 mini for cost-effective testing
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4o-mini",  # cost-effective model for testing
             messages=[{"role": "system", "content": "You are a helpful assistant."}] + conversation_history
         )
 
@@ -37,7 +37,6 @@ def chat():
         conversation_history.append({"role": "assistant", "content": reply})
 
         return jsonify({"reply": reply})
-    
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
