@@ -3,31 +3,30 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Chatbot with Voice</title>
+  <title>Freedom Chatbot</title>
   <style>
     body {
       font-family: Arial, sans-serif;
-      background-color: #f0f2f5;
-      margin: 0;
-      padding: 0;
+      background: #f5f7fa;
       display: flex;
       justify-content: center;
       align-items: center;
       height: 100vh;
+      margin: 0;
     }
     .chat-container {
       width: 400px;
       background: #fff;
-      border-radius: 10px;
-      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      overflow: hidden;
       display: flex;
       flex-direction: column;
-      overflow: hidden;
     }
     .chat-header {
-      background: #007bff;
-      color: #fff;
-      padding: 10px;
+      background: #4285f4;
+      color: white;
+      padding: 12px;
       text-align: center;
       font-weight: bold;
     }
@@ -35,49 +34,48 @@
       flex: 1;
       padding: 10px;
       overflow-y: auto;
+      border-top: 1px solid #ddd;
       border-bottom: 1px solid #ddd;
-    }
-    .chat-message {
-      margin: 5px 0;
-    }
-    .chat-message.user {
-      text-align: right;
-      color: #007bff;
-    }
-    .chat-message.bot {
-      text-align: left;
-      color: #333;
     }
     .chat-input {
       display: flex;
-      border-top: 1px solid #ddd;
+      align-items: center;
+      padding: 8px;
     }
-    .chat-input input {
+    input[type="text"] {
       flex: 1;
-      border: none;
       padding: 10px;
-      font-size: 14px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      margin-right: 8px;
     }
-    .chat-input button {
+    button {
+      padding: 8px 14px;
       border: none;
-      padding: 10px;
-      cursor: pointer;
-      background: #007bff;
+      border-radius: 8px;
+      background: #4285f4;
       color: white;
-      font-weight: bold;
-    }
-    .chat-input button:hover {
-      background: #0056b3;
+      cursor: pointer;
     }
     .mic-button {
-      border: none;
-      background: #28a745;
-      color: white;
-      padding: 10px;
-      cursor: pointer;
+      margin-left: 8px;
+      background: #ea4335;
     }
-    .mic-button:hover {
-      background: #1e7e34;
+    .waveform {
+      height: 30px;
+      width: 100%;
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+    }
+    .bar {
+      width: 3px;
+      background: #4285f4;
+      animation: bounce 1s infinite ease-in-out;
+    }
+    @keyframes bounce {
+      0%, 100% { height: 5px; }
+      50% { height: 30px; }
     }
   </style>
 </head>
@@ -85,87 +83,91 @@
   <div class="chat-container">
     <div class="chat-header">Freedom Chatbot</div>
     <div class="chat-box" id="chat-box"></div>
+    <div class="waveform" id="waveform" style="display:none;"></div>
     <div class="chat-input">
       <input type="text" id="user-input" placeholder="Type your message...">
       <button onclick="sendMessage()">Send</button>
-      <button class="mic-button" onclick="toggleRecording()">🎤</button>
+      <button class="mic-button" id="micBtn" onclick="toggleRecording()">🎤</button>
     </div>
   </div>
 
   <script>
-    const chatBox = document.getElementById('chat-box');
-    const userInput = document.getElementById('user-input');
+    const chatBox = document.getElementById("chat-box");
+    const userInput = document.getElementById("user-input");
+    const micBtn = document.getElementById("micBtn");
+    const waveform = document.getElementById("waveform");
+
+    // Create waveform bars
+    for(let i=0;i<20;i++){
+      let bar = document.createElement("div");
+      bar.className = "bar";
+      bar.style.animationDelay = `${i*0.05}s`;
+      waveform.appendChild(bar);
+    }
+
     let isRecording = false;
     let recognition;
+    let synth = window.speechSynthesis;
 
-    function appendMessage(content, sender) {
-      const messageDiv = document.createElement('div');
-      messageDiv.className = `chat-message ${sender}`;
-      messageDiv.innerText = content;
-      chatBox.appendChild(messageDiv);
+    function appendMessage(sender, text) {
+      const msg = document.createElement("div");
+      msg.innerHTML = `<strong>${sender}:</strong> ${text}`;
+      chatBox.appendChild(msg);
       chatBox.scrollTop = chatBox.scrollHeight;
     }
 
     async function sendMessage(message) {
-      if (!message) message = userInput.value;
-      if (!message) return;
+      const text = message || userInput.value;
+      if (!text) return;
+      appendMessage("You", text);
+      userInput.value = "";
 
-      appendMessage(message, 'user');
-      userInput.value = '';
-
-      const response = await fetch('/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message })
+      const response = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text })
       });
 
       const data = await response.json();
       if (data.reply) {
-        appendMessage(data.reply, 'bot');
-        playVoice(data.reply);
+        appendMessage("Bot", data.reply);
+        // Speak with natural-sounding voice if available
+        const utterance = new SpeechSynthesisUtterance(data.reply);
+        const voices = synth.getVoices();
+        utterance.voice = voices.find(v => v.name.includes("Google UK English Female")) || voices[0];
+        synth.speak(utterance);
       }
     }
 
     function toggleRecording() {
-      if (!('webkitSpeechRecognition' in window)) {
-        alert('Speech recognition not supported in this browser.');
-        return;
-      }
-
-      if (!recognition) {
-        recognition = new webkitSpeechRecognition();
-        recognition.continuous = false; // stop after pause
-        recognition.interimResults = false;
-        recognition.lang = 'en-US';
-
-        recognition.onresult = function(event) {
-          const transcript = event.results[0][0].transcript;
-          sendMessage(transcript);
-        };
-      }
-
       if (!isRecording) {
+        recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+        recognition.lang = "en-US";
+        recognition.interimResults = true;
+
+        recognition.onstart = () => {
+          isRecording = true;
+          micBtn.textContent = "⏹️";
+          waveform.style.display = "flex";
+        };
+
+        recognition.onresult = (event) => {
+          let transcript = Array.from(event.results)
+            .map(result => result[0].transcript)
+            .join("");
+          userInput.value = transcript;
+        };
+
+        recognition.onend = () => {
+          isRecording = false;
+          micBtn.textContent = "🎤";
+          waveform.style.display = "none";
+          if (userInput.value) sendMessage(userInput.value);
+        };
+
         recognition.start();
-        isRecording = true;
       } else {
         recognition.stop();
-        isRecording = false;
-      }
-    }
-
-    async function playVoice(text) {
-      try {
-        const response = await fetch('/speak', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text })
-        });
-        const audioBlob = await response.blob();
-        const audioUrl = URL.createObjectURL(audioBlob);
-        const audio = new Audio(audioUrl);
-        audio.play();
-      } catch (err) {
-        console.error('TTS playback failed', err);
       }
     }
   </script>
