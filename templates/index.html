@@ -3,65 +3,81 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Freedom Chatbot</title>
+  <title>Chatbot with History</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #f4f7fa; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-    .chat-container { width: 400px; background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
-    .chat-header { background: #4285f4; color: white; padding: 10px; border-radius: 10px 10px 0 0; text-align: center; font-weight: bold; }
-    .chat-messages { flex: 1; padding: 10px; overflow-y: auto; max-height: 300px; display: flex; flex-direction: column; }
-    .message { margin: 5px 0; padding: 8px 12px; border-radius: 10px; max-width: 80%; }
-    .user { background: #d4f7d4; align-self: flex-end; }
-    .assistant { background: #f1f1f1; align-self: flex-start; }
-    .user.latest { background: #a8e6a3; font-weight: bold; }
-    .chat-input { display: flex; border-top: 1px solid #ddd; }
-    .chat-input input { flex: 1; padding: 10px; border: none; border-radius: 0 0 0 10px; outline: none; }
-    .chat-input button { padding: 10px 20px; border: none; background: #4285f4; color: white; border-radius: 0 0 10px 0; cursor: pointer; }
-    .chat-input button:hover { background: #357ae8; }
+    body { font-family: Arial, sans-serif; background: #f4f4f9; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+    #chat-container { width: 400px; background: #fff; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
+    #chat-box { flex: 1; padding: 15px; overflow-y: auto; border-bottom: 1px solid #ccc; height: 400px; }
+    .message { margin: 8px 0; padding: 10px; border-radius: 8px; }
+    .user { background: #007bff; color: #fff; text-align: right; }
+    .bot { background: #eaeaea; text-align: left; }
+    #input-container { display: flex; padding: 10px; }
+    #message-input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+    button { margin-left: 8px; padding: 10px; border: none; border-radius: 5px; cursor: pointer; }
+    #send-btn { background: #007bff; color: #fff; }
+    #voice-btn { background: #28a745; color: #fff; }
   </style>
 </head>
 <body>
-  <div class="chat-container">
-    <div class="chat-header">Freedom Chatbot</div>
-    <div class="chat-messages" id="chat-messages"></div>
-    <div class="chat-input">
-      <input type="text" id="user-input" placeholder="Type a message...">
-      <button onclick="sendMessage()">Send</button>
+  <div id="chat-container">
+    <div id="chat-box"></div>
+    <div id="input-container">
+      <input type="text" id="message-input" placeholder="Type a message...">
+      <button id="send-btn">Send</button>
+      <button id="voice-btn">🎤</button>
     </div>
   </div>
 
   <script>
-    const messagesContainer = document.getElementById("chat-messages");
+    const chatBox = document.getElementById("chat-box");
+    const input = document.getElementById("message-input");
+    const sendBtn = document.getElementById("send-btn");
+    const voiceBtn = document.getElementById("voice-btn");
 
-    function addMessage(content, sender, latest = false) {
+    function appendMessage(text, sender) {
       const msg = document.createElement("div");
       msg.classList.add("message", sender);
-      if (latest && sender === "user") {
-        msg.classList.add("latest");
-      }
-      msg.textContent = content;
-      messagesContainer.appendChild(msg);
-      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      msg.textContent = text;
+      chatBox.appendChild(msg);
+      chatBox.scrollTop = chatBox.scrollHeight;
     }
 
     async function sendMessage() {
-      const input = document.getElementById("user-input");
-      const text = input.value.trim();
-      if (!text) return;
-
-      // Remove 'latest' class from old user messages
-      document.querySelectorAll(".user.latest").forEach(el => el.classList.remove("latest"));
-
-      addMessage(text, "user", true);
+      const userMessage = input.value.trim();
+      if (!userMessage) return;
+      appendMessage(userMessage, "user");
       input.value = "";
 
       const response = await fetch("/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text })
+        body: JSON.stringify({ message: userMessage })
+      });
+      const data = await response.json();
+      appendMessage(data.reply || "Error: " + data.error, "bot");
+    }
+
+    sendBtn.addEventListener("click", sendMessage);
+    input.addEventListener("keypress", (e) => { if (e.key === "Enter") sendMessage(); });
+
+    // Voice recognition for Chrome
+    if ('webkitSpeechRecognition' in window) {
+      const recognition = new webkitSpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = "en-US";
+
+      voiceBtn.addEventListener("click", () => {
+        recognition.start();
       });
 
-      const data = await response.json();
-      addMessage(data.reply, "assistant");
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        input.value = transcript;
+        sendMessage();
+      };
+    } else {
+      voiceBtn.style.display = "none"; // Hide mic if not supported
     }
   </script>
 </body>
