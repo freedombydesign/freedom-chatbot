@@ -1,82 +1,173 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Chatbot with Natural Voice</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        #chat-container { width: 600px; margin: auto; border: 1px solid #ccc; padding: 10px; border-radius: 8px; }
-        #messages { height: 400px; overflow-y: scroll; border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; }
-        .message { margin: 5px 0; }
-        .user { font-weight: bold; color: blue; }
-        .assistant { font-weight: bold; color: green; }
-        #input-container { display: flex; }
-        #user-input { flex: 1; padding: 8px; }
-        button { padding: 8px; margin-left: 5px; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chatbot with Voice</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f0f2f5;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    .chat-container {
+      width: 400px;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .chat-header {
+      background: #007bff;
+      color: #fff;
+      padding: 10px;
+      text-align: center;
+      font-weight: bold;
+    }
+    .chat-box {
+      flex: 1;
+      padding: 10px;
+      overflow-y: auto;
+      border-bottom: 1px solid #ddd;
+    }
+    .chat-message {
+      margin: 5px 0;
+    }
+    .chat-message.user {
+      text-align: right;
+      color: #007bff;
+    }
+    .chat-message.bot {
+      text-align: left;
+      color: #333;
+    }
+    .chat-input {
+      display: flex;
+      border-top: 1px solid #ddd;
+    }
+    .chat-input input {
+      flex: 1;
+      border: none;
+      padding: 10px;
+      font-size: 14px;
+    }
+    .chat-input button {
+      border: none;
+      padding: 10px;
+      cursor: pointer;
+      background: #007bff;
+      color: white;
+      font-weight: bold;
+    }
+    .chat-input button:hover {
+      background: #0056b3;
+    }
+    .mic-button {
+      border: none;
+      background: #28a745;
+      color: white;
+      padding: 10px;
+      cursor: pointer;
+    }
+    .mic-button:hover {
+      background: #1e7e34;
+    }
+  </style>
 </head>
 <body>
-    <h2>Chatbot with Natural Voice</h2>
-    <div id="chat-container">
-        <div id="messages"></div>
-        <div id="input-container">
-            <input type="text" id="user-input" placeholder="Type your message..." />
-            <button onclick="sendMessage()">Send</button>
-            <button onclick="startListening()">🎤</button>
-        </div>
+  <div class="chat-container">
+    <div class="chat-header">Freedom Chatbot</div>
+    <div class="chat-box" id="chat-box"></div>
+    <div class="chat-input">
+      <input type="text" id="user-input" placeholder="Type your message...">
+      <button onclick="sendMessage()">Send</button>
+      <button class="mic-button" onclick="toggleRecording()">🎤</button>
     </div>
+  </div>
 
-    <script>
-        async function sendMessage(text = null) {
-            const input = document.getElementById("user-input");
-            const message = text || input.value;
-            if (!message) return;
+  <script>
+    const chatBox = document.getElementById('chat-box');
+    const userInput = document.getElementById('user-input');
+    let isRecording = false;
+    let recognition;
 
-            addMessage("user", message);
-            input.value = "";
+    function appendMessage(content, sender) {
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `chat-message ${sender}`;
+      messageDiv.innerText = content;
+      chatBox.appendChild(messageDiv);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
 
-            const response = await fetch("/chat", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ message })
-            });
+    async function sendMessage(message) {
+      if (!message) message = userInput.value;
+      if (!message) return;
 
-            const data = await response.json();
-            if (data.reply) {
-                addMessage("assistant", data.reply);
-                playVoice(data.reply);  // Convert reply to natural voice
-            }
-        }
+      appendMessage(message, 'user');
+      userInput.value = '';
 
-        function addMessage(role, text) {
-            const messagesDiv = document.getElementById("messages");
-            const messageDiv = document.createElement("div");
-            messageDiv.className = "message " + role;
-            messageDiv.textContent = role + ": " + text;
-            messagesDiv.appendChild(messageDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        }
+      const response = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message })
+      });
 
-        function startListening() {
-            const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-            recognition.lang = "en-US";
-            recognition.start();
-            recognition.onresult = function(event) {
-                const transcript = event.results[0][0].transcript;
-                sendMessage(transcript);
-            };
-        }
+      const data = await response.json();
+      if (data.reply) {
+        appendMessage(data.reply, 'bot');
+        playVoice(data.reply);
+      }
+    }
 
-        async function playVoice(text) {
-            const response = await fetch("/speak", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text })
-            });
-            const audioBlob = await response.blob();
-            const audioUrl = URL.createObjectURL(audioBlob);
-            const audio = new Audio(audioUrl);
-            audio.play();
-        }
-    </script>
+    function toggleRecording() {
+      if (!('webkitSpeechRecognition' in window)) {
+        alert('Speech recognition not supported in this browser.');
+        return;
+      }
+
+      if (!recognition) {
+        recognition = new webkitSpeechRecognition();
+        recognition.continuous = false; // stop after pause
+        recognition.interimResults = false;
+        recognition.lang = 'en-US';
+
+        recognition.onresult = function(event) {
+          const transcript = event.results[0][0].transcript;
+          sendMessage(transcript);
+        };
+      }
+
+      if (!isRecording) {
+        recognition.start();
+        isRecording = true;
+      } else {
+        recognition.stop();
+        isRecording = false;
+      }
+    }
+
+    async function playVoice(text) {
+      try {
+        const response = await fetch('/speak', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text })
+        });
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioUrl);
+        audio.play();
+      } catch (err) {
+        console.error('TTS playback failed', err);
+      }
+    }
+  </script>
 </body>
 </html>
