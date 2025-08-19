@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Voice Chatbot</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chatbot with Voice Input</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -15,179 +15,134 @@
       height: 100vh;
       margin: 0;
     }
-    #chatbox {
+    #chat-container {
       width: 400px;
-      height: 500px;
-      border: 1px solid #ccc;
+      max-width: 90%;
+      height: 600px;
       background: #fff;
-      overflow-y: auto;
-      padding: 10px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
       display: flex;
       flex-direction: column;
     }
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+      border-bottom: 1px solid #ddd;
+    }
     .message {
-      margin: 5px 0;
-      padding: 8px;
-      border-radius: 5px;
+      margin: 8px 0;
+      padding: 8px 12px;
+      border-radius: 6px;
     }
-    .user {
-      background: #daf1da;
-      align-self: flex-end;
-    }
-    .bot {
-      background: #e4e4e4;
-      align-self: flex-start;
-    }
-    #controls {
+    .user { background: #d1e7ff; align-self: flex-end; }
+    .bot { background: #e9ecef; align-self: flex-start; }
+    #input-container {
       display: flex;
-      width: 400px;
-      margin-top: 10px;
+      align-items: center;
+      padding: 10px;
     }
-    #userInput {
+    #user-input {
       flex: 1;
       padding: 10px;
       border: 1px solid #ccc;
-      border-radius: 5px;
+      border-radius: 6px;
     }
     button {
-      padding: 10px;
-      margin-left: 5px;
+      margin-left: 8px;
+      padding: 10px 12px;
       border: none;
       border-radius: 50%;
       cursor: pointer;
+      font-size: 18px;
     }
-    #micButton {
-      background: #4CAF50;
+    #mic-button {
+      background: #28a745;
       color: white;
+      position: relative;
     }
-    #sendButton {
-      background: #2196F3;
-      color: white;
-      border-radius: 5px;
+    #mic-button.recording {
+      background: #dc3545;
+      animation: pulse 1s infinite;
     }
-    #waveform {
-      height: 30px;
-      width: 100%;
-      background: #f9f9f9;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 12px;
-      color: #999;
-      margin-top: 5px;
-    }
-    #options {
-      margin-top: 10px;
-      font-size: 14px;
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(220,53,69, 0.7); }
+      70% { box-shadow: 0 0 0 15px rgba(220,53,69, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(220,53,69, 0); }
     }
   </style>
 </head>
 <body>
-  <div id="chatbox"></div>
-  <div id="controls">
-    <input id="userInput" type="text" placeholder="Type a message..." />
-    <button id="sendButton">Send</button>
-    <button id="micButton">🎤</button>
-  </div>
-  <div id="waveform">🎙️ Speak now...</div>
-  <div id="options">
-    <label><input type="checkbox" id="voiceToggle" checked> Hear bot reply with voice</label>
+  <div id="chat-container">
+    <div id="messages"></div>
+    <div id="input-container">
+      <input type="text" id="user-input" placeholder="Type a message..." />
+      <button id="send-button">➤</button>
+      <button id="mic-button">🎤</button>
+    </div>
   </div>
 
   <script>
-    const chatbox = document.getElementById("chatbox");
-    const userInput = document.getElementById("userInput");
-    const sendButton = document.getElementById("sendButton");
-    const micButton = document.getElementById("micButton");
-    const waveform = document.getElementById("waveform");
-    const voiceToggle = document.getElementById("voiceToggle");
+    const messagesContainer = document.getElementById("messages");
+    const userInput = document.getElementById("user-input");
+    const sendButton = document.getElementById("send-button");
+    const micButton = document.getElementById("mic-button");
 
-    let recognition;
-    let isRecording = false;
-
-    function appendMessage(content, sender) {
-      const msg = document.createElement("div");
-      msg.className = `message ${sender}`;
-      msg.textContent = content;
-      chatbox.appendChild(msg);
-      chatbox.scrollTop = chatbox.scrollHeight;
+    function addMessage(text, sender) {
+      const message = document.createElement("div");
+      message.classList.add("message", sender);
+      message.textContent = text;
+      messagesContainer.appendChild(message);
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
 
-    async function sendMessage(message) {
-      appendMessage(message, "user");
+    async function sendMessage() {
+      const text = userInput.value.trim();
+      if (!text) return;
+      addMessage(text, "user");
       userInput.value = "";
 
-      const res = await fetch("/chat", {
+      const response = await fetch("/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message })
+        body: JSON.stringify({ message: text })
       });
-      const data = await res.json();
-      if (data.reply) {
-        appendMessage(data.reply, "bot");
-        if (voiceToggle.checked) {
-          speak(data.reply);
-        }
-      }
+      const data = await response.json();
+      addMessage(data.reply, "bot");
     }
 
-    function speak(text) {
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = "en-US";
-      utterance.voice = speechSynthesis.getVoices().find(v => v.lang === "en-US" && v.name.includes("Female")) || speechSynthesis.getVoices().find(v => v.lang === "en-US");
-      speechSynthesis.speak(utterance);
-    }
+    sendButton.addEventListener("click", sendMessage);
+    userInput.addEventListener("keypress", e => { if (e.key === "Enter") sendMessage(); });
 
-    sendButton.addEventListener("click", () => {
-      if (userInput.value.trim() !== "") {
-        sendMessage(userInput.value.trim());
-      }
-    });
-
-    userInput.addEventListener("keypress", e => {
-      if (e.key === "Enter" && userInput.value.trim() !== "") {
-        sendMessage(userInput.value.trim());
-      }
-    });
-
-    micButton.addEventListener("click", () => {
-      if (!isRecording) {
-        startRecording();
-      } else {
-        stopRecording();
-      }
-    });
-
-    function startRecording() {
-      recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-      recognition.lang = "en-US";
-      recognition.interimResults = true;
+    // Speech Recognition
+    let recognition;
+    if ("webkitSpeechRecognition" in window) {
+      recognition = new webkitSpeechRecognition();
       recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
 
-      recognition.onresult = (event) => {
+      recognition.onresult = event => {
         let transcript = "";
         for (let i = event.resultIndex; i < event.results.length; i++) {
           transcript += event.results[i][0].transcript;
         }
-        waveform.textContent = transcript;
-        if (event.results[event.results.length - 1].isFinal) {
-          sendMessage(transcript);
-          stopRecording();
-        }
+        userInput.value = transcript;
       };
 
-      recognition.start();
-      isRecording = true;
-      micButton.style.background = "#FF5722";
-    }
-
-    function stopRecording() {
-      if (recognition) {
-        recognition.stop();
-      }
-      isRecording = false;
-      micButton.style.background = "#4CAF50";
-      waveform.textContent = "🎙️ Speak now...";
+      micButton.addEventListener("click", () => {
+        if (micButton.classList.contains("recording")) {
+          recognition.stop();
+          micButton.classList.remove("recording");
+        } else {
+          recognition.start();
+          micButton.classList.add("recording");
+        }
+      });
+    } else {
+      micButton.disabled = true;
+      micButton.textContent = "🚫";
     }
   </script>
 </body>
