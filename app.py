@@ -1,168 +1,172 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Chatbot with Voice</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chatbot</title>
   <style>
     body {
       font-family: Arial, sans-serif;
       background-color: #f5f5f5;
       display: flex;
+      justify-content: center;
+      align-items: center;
       height: 100vh;
       margin: 0;
     }
-    .sidebar {
-      width: 30%;
-      background: #fff;
-      border-right: 1px solid #ddd;
-      display: flex;
-      flex-direction: column;
-      padding: 10px;
-      overflow-y: auto;
-    }
     .chat-container {
-      flex: 1;
+      width: 400px;
+      height: 600px;
+      background: white;
       display: flex;
       flex-direction: column;
-      justify-content: flex-end;
-      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+    .messages {
+      flex: 1;
+      padding: 15px;
+      overflow-y: auto;
+      border-bottom: 1px solid #ddd;
     }
     .message {
       margin: 8px 0;
-      padding: 10px;
-      border-radius: 8px;
-      max-width: 70%;
+      padding: 10px 14px;
+      border-radius: 18px;
+      max-width: 80%;
+      word-wrap: break-word;
     }
-    .user {
-      background: #007bff;
+    .message.user {
+      background-color: #007bff;
       color: white;
       align-self: flex-end;
     }
-    .bot {
-      background: #e0e0e0;
+    .message.bot {
+      background-color: #e9ecef;
+      color: black;
       align-self: flex-start;
     }
-    .input-container {
+    .input-area {
       display: flex;
-      border-top: 1px solid #ddd;
+      align-items: center;
       padding: 10px;
-      background: #fff;
     }
-    input[type="text"] {
+    .input-area input {
       flex: 1;
       padding: 10px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
+      border: 1px solid #ccc;
+      border-radius: 20px;
+      outline: none;
     }
-    button {
-      margin-left: 10px;
-      padding: 10px 15px;
-      border: none;
-      border-radius: 4px;
-      background: #007bff;
+    .send-btn {
+      margin-left: 8px;
+      background-color: #007bff;
       color: white;
-      cursor: pointer;
-    }
-    button:hover {
-      background: #0056b3;
-    }
-    #micButton {
-      width: 50px;
-      height: 50px;
-      border-radius: 50%;
       border: none;
-      background: #fff;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
       cursor: pointer;
-      margin-left: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+    .mic-btn {
+      margin-left: 8px;
+      background-color: white;
+      border: 2px solid #007bff;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       position: relative;
     }
-    #micButton.recording::after {
+    .mic-btn.recording::after {
       content: '';
       position: absolute;
-      top: -10px;
-      left: -10px;
-      width: 70px;
-      height: 70px;
+      width: 60px;
+      height: 60px;
       border-radius: 50%;
       border: 2px solid #007bff;
       animation: pulse 1.5s infinite;
     }
     @keyframes pulse {
       0% { transform: scale(0.9); opacity: 1; }
-      100% { transform: scale(1.4); opacity: 0; }
+      100% { transform: scale(1.5); opacity: 0; }
     }
   </style>
 </head>
 <body>
-  <div class="sidebar" id="chatSidebar"></div>
   <div class="chat-container">
-    <div id="chatBox"></div>
-    <div class="input-container">
-      <input type="text" id="userInput" placeholder="Type a message...">
-      <button onclick="sendMessage()">Send</button>
-      <button id="micButton">🎤</button>
+    <div class="messages" id="messages"></div>
+    <div class="input-area">
+      <input type="text" id="userInput" placeholder="Type a message..." />
+      <button class="send-btn" onclick="sendMessage()">➤</button>
+      <button class="mic-btn" id="micBtn">🎤</button>
     </div>
   </div>
 
   <script>
-    const chatBox = document.getElementById('chatBox');
-    const chatSidebar = document.getElementById('chatSidebar');
-    const micButton = document.getElementById('micButton');
-    let mediaRecorder;
-    let audioChunks = [];
+    const messagesEl = document.getElementById("messages");
+    const userInput = document.getElementById("userInput");
+    const micBtn = document.getElementById("micBtn");
+    let isRecording = false;
+    let recognition;
 
-    function addMessage(content, sender) {
-      const msg = document.createElement('div');
-      msg.className = `message ${sender}`;
+    function appendMessage(content, sender) {
+      const msg = document.createElement("div");
+      msg.classList.add("message", sender);
       msg.textContent = content;
-      chatBox.appendChild(msg);
-      chatBox.scrollTop = chatBox.scrollHeight;
-
-      const sidebarMsg = msg.cloneNode(true);
-      chatSidebar.appendChild(sidebarMsg);
-      chatSidebar.scrollTop = chatSidebar.scrollHeight;
+      messagesEl.appendChild(msg);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
     }
 
     async function sendMessage() {
-      const input = document.getElementById('userInput');
-      const userText = input.value;
-      if (!userText) return;
-      addMessage(userText, 'user');
-      input.value = '';
-      const res = await fetch('/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userText })
+      const text = userInput.value.trim();
+      if (!text) return;
+      appendMessage(text, "user");
+      userInput.value = "";
+
+      const response = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text })
       });
-      const data = await res.json();
-      addMessage(data.reply, 'bot');
+      const data = await response.json();
+      if (data.reply) {
+        appendMessage(data.reply, "bot");
+      }
     }
 
-    micButton.addEventListener('click', async () => {
-      if (!mediaRecorder || mediaRecorder.state === 'inactive') {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorder = new MediaRecorder(stream);
-        mediaRecorder.start();
-        micButton.classList.add('recording');
-        audioChunks = [];
+    if ("webkitSpeechRecognition" in window) {
+      recognition = new webkitSpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
 
-        mediaRecorder.addEventListener('dataavailable', event => {
-          audioChunks.push(event.data);
-        });
+      micBtn.addEventListener("click", () => {
+        if (!isRecording) {
+          recognition.start();
+          isRecording = true;
+          micBtn.classList.add("recording");
+        } else {
+          recognition.stop();
+          isRecording = false;
+          micBtn.classList.remove("recording");
+        }
+      });
 
-        mediaRecorder.addEventListener('stop', async () => {
-          micButton.classList.remove('recording');
-          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-          const formData = new FormData();
-          formData.append('audio', audioBlob);
-          const res = await fetch('/voice', { method: 'POST', body: formData });
-          const data = await res.json();
-          addMessage(data.reply, 'bot');
-        });
-      } else {
-        mediaRecorder.stop();
-      }
-    });
+      recognition.onresult = (event) => {
+        let transcript = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        userInput.value = transcript;
+      };
+    }
   </script>
 </body>
 </html>
