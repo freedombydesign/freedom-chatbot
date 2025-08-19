@@ -1,211 +1,187 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Chatbot</title>
   <style>
     body {
       font-family: Arial, sans-serif;
-      background: #f5f5f5;
-      margin: 0;
-      height: 100vh;
+      background: #f7f7f7;
       display: flex;
       justify-content: center;
       align-items: center;
+      height: 100vh;
+      margin: 0;
     }
-
     .chat-container {
-      display: flex;
-      flex-direction: column;
       width: 400px;
       height: 600px;
-      background: white;
+      background: #fff;
       border-radius: 12px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
       overflow: hidden;
     }
-
-    .chat-header {
-      background: #007bff;
-      color: white;
-      padding: 12px;
-      text-align: center;
-      font-weight: bold;
-    }
-
-    .chat-messages {
+    .messages {
       flex: 1;
-      padding: 12px;
+      padding: 10px;
       overflow-y: auto;
+      scroll-behavior: smooth;
     }
-
     .message {
-      margin: 8px 0;
-      padding: 10px 14px;
-      border-radius: 16px;
+      margin: 6px 0;
+      padding: 10px;
+      border-radius: 8px;
       max-width: 80%;
-      word-wrap: break-word;
+      clear: both;
     }
-
-    .user-message {
+    .user {
       background: #007bff;
       color: white;
       align-self: flex-end;
     }
-
-    .bot-message {
-      background: #e9ecef;
-      color: black;
+    .bot {
+      background: #eaeaea;
+      color: #333;
       align-self: flex-start;
     }
-
-    .chat-input {
+    .input-container {
       display: flex;
+      align-items: center;
       padding: 10px;
-      border-top: 1px solid #ccc;
-      background: #f9f9f9;
+      border-top: 1px solid #ddd;
+      background: #fafafa;
     }
-
-    .chat-input input {
+    #user-input {
       flex: 1;
-      padding: 10px;
+      padding: 8px;
       border: 1px solid #ccc;
-      border-radius: 20px;
+      border-radius: 8px;
       outline: none;
     }
-
-    .chat-input button {
-      margin-left: 8px;
+    #send-btn {
       background: #007bff;
       color: white;
       border: none;
-      border-radius: 20px;
-      padding: 0 16px;
+      padding: 8px 12px;
+      margin-left: 8px;
+      border-radius: 8px;
       cursor: pointer;
     }
-
-    .chat-input button:hover {
-      background: #0056b3;
-    }
-
-    .mic-btn {
-      margin-left: 8px;
-      background: white;
-      border: 1px solid #007bff;
+    #mic-btn {
+      background: #fff;
+      border: 2px solid #007bff;
+      color: #007bff;
       border-radius: 50%;
       width: 40px;
       height: 40px;
       display: flex;
-      justify-content: center;
       align-items: center;
+      justify-content: center;
+      margin-left: 8px;
       cursor: pointer;
+      transition: transform 0.2s ease;
     }
-
-    .mic-btn.active {
+    #mic-btn.recording {
       background: #007bff;
-      color: white;
-    }
-
-    /* Subtle pulsing animation for active mic */
-    .mic-btn.active::after {
-      content: '';
-      position: absolute;
-      width: 50px;
-      height: 50px;
-      border-radius: 50%;
-      background: rgba(0,123,255,0.2);
+      color: #fff;
       animation: pulse 1.2s infinite;
     }
-
     @keyframes pulse {
-      0% { transform: scale(0.9); opacity: 0.7; }
-      70% { transform: scale(1.1); opacity: 0; }
-      100% { transform: scale(0.9); opacity: 0; }
+      0% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+      100% { transform: scale(1); }
     }
-
   </style>
 </head>
 <body>
   <div class="chat-container">
-    <div class="chat-header">AI Assistant</div>
-    <div id="chat-messages" class="chat-messages"></div>
-    <div class="chat-input">
-      <input type="text" id="user-input" placeholder="Type a message..." />
-      <button onclick="sendMessage()">Send</button>
-      <div id="mic-button" class="mic-btn">🎤</div>
+    <div class="messages" id="messages"></div>
+    <div class="input-container">
+      <input type="text" id="user-input" placeholder="Type a message...">
+      <button id="send-btn">Send</button>
+      <button id="mic-btn">🎤</button>
     </div>
   </div>
 
   <script>
-    const messagesContainer = document.getElementById('chat-messages');
-    const userInput = document.getElementById('user-input');
-    const micButton = document.getElementById('mic-button');
-    let recognition;
+    const messagesEl = document.getElementById("messages");
+    const inputEl = document.getElementById("user-input");
+    const sendBtn = document.getElementById("send-btn");
+    const micBtn = document.getElementById("mic-btn");
 
-    function appendMessage(text, sender) {
-      const msg = document.createElement('div');
-      msg.classList.add('message');
-      msg.classList.add(sender === 'user' ? 'user-message' : 'bot-message');
-      msg.textContent = text;
-      messagesContainer.appendChild(msg);
-      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    let recognition;
+    let isRecording = false;
+
+    // Add message to UI
+    function addMessage(content, sender) {
+      const div = document.createElement("div");
+      div.classList.add("message", sender);
+      div.textContent = content;
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
     }
 
+    // Send message to backend
     async function sendMessage() {
-      const text = userInput.value.trim();
-      if (!text) return;
-      appendMessage(text, 'user');
-      userInput.value = '';
+      const message = inputEl.value.trim();
+      if (!message) return;
 
-      const response = await fetch('/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text })
-      });
+      addMessage(message, "user");
+      inputEl.value = "";
 
-      const data = await response.json();
-      if (data.reply) {
-        appendMessage(data.reply, 'bot');
-      } else {
-        appendMessage('Error: ' + (data.error || 'Unknown error'), 'bot');
+      try {
+        const res = await fetch("/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message }),
+        });
+        const data = await res.json();
+        addMessage(data.reply, "bot");
+      } catch (err) {
+        addMessage("Error: " + err.message, "bot");
       }
     }
 
-    userInput.addEventListener('keypress', function(e) {
-      if (e.key === 'Enter') sendMessage();
+    sendBtn.addEventListener("click", sendMessage);
+    inputEl.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") sendMessage();
     });
 
-    // Web Speech API for mic
-    if ('webkitSpeechRecognition' in window) {
-      recognition = new webkitSpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
+    // Voice recognition toggle
+    micBtn.addEventListener("click", () => {
+      if (!recognition) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        recognition = new SpeechRecognition();
+        recognition.lang = "en-US";
+        recognition.interimResults = true;
 
-      micButton.addEventListener('click', () => {
-        if (micButton.classList.contains('active')) {
-          recognition.stop();
-          micButton.classList.remove('active');
-        } else {
-          recognition.start();
-          micButton.classList.add('active');
-        }
-      });
+        recognition.onresult = (event) => {
+          let transcript = "";
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            transcript += event.results[i][0].transcript;
+          }
+          inputEl.value = transcript;
+        };
 
-      recognition.onresult = (event) => {
-        let transcript = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          transcript += event.results[i][0].transcript;
-        }
-        userInput.value = transcript;
-      };
+        recognition.onend = () => {
+          micBtn.classList.remove("recording");
+          isRecording = false;
+        };
+      }
 
-      recognition.onerror = (e) => {
-        console.error(e);
-        micButton.classList.remove('active');
-      };
-    }
+      if (!isRecording) {
+        recognition.start();
+        micBtn.classList.add("recording");
+        isRecording = true;
+      } else {
+        recognition.stop();
+        micBtn.classList.remove("recording");
+        isRecording = false;
+      }
+    });
   </script>
 </body>
 </html>
