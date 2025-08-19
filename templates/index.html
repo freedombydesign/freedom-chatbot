@@ -2,104 +2,110 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Chatbot with Voice</title>
+  <title>Chatbot with Voice and Typing Effect</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    #chatbox { width: 100%; max-width: 600px; margin: auto; border: 1px solid #ccc; padding: 10px; border-radius: 5px; height: 400px; overflow-y: auto; }
+    body { font-family: Arial, sans-serif; background: #f4f4f4; }
+    #chatbox { width: 400px; height: 400px; border: 1px solid #ccc; background: #fff; overflow-y: scroll; margin: 20px auto; padding: 10px; }
     .message { margin: 5px 0; }
-    .user { font-weight: bold; color: blue; }
-    .bot { font-weight: bold; color: green; }
-    #controls { margin-top: 10px; display: flex; gap: 5px; }
-    #micButton.listening { background-color: red; color: white; }
+    .user { color: blue; }
+    .assistant { color: green; }
+    #controls { width: 400px; margin: auto; display: flex; }
+    #message { flex: 1; padding: 5px; }
+    button { padding: 5px 10px; margin-left: 5px; }
   </style>
 </head>
 <body>
-  <h2>Chatbot with Voice</h2>
   <div id="chatbox"></div>
   <div id="controls">
-    <input type="text" id="messageInput" placeholder="Type your message..." style="flex:1;">
+    <input type="text" id="message" placeholder="Type a message...">
     <button onclick="sendMessage()">Send</button>
-    <button id="micButton" onclick="toggleMic()">🎤</button>
+    <button onclick="toggleMic()" id="micBtn">🎤</button>
   </div>
 
   <script>
-    const chatbox = document.getElementById("chatbox");
-    const input = document.getElementById("messageInput");
-    const micButton = document.getElementById("micButton");
+    const chatbox = document.getElementById('chatbox');
+    const messageInput = document.getElementById('message');
+    let recognizing = false;
     let recognition;
-    let listening = false;
 
     if ('webkitSpeechRecognition' in window) {
       recognition = new webkitSpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = false;
-      recognition.lang = "en-US";
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
 
-      recognition.onstart = () => {
-        listening = true;
-        micButton.classList.add("listening");
-        micButton.innerText = "🎤 Listening...";
+      recognition.onresult = (event) => {
+        let interim = '';
+        let finalTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          } else {
+            interim += event.results[i][0].transcript;
+          }
+        }
+        messageInput.value = finalTranscript || interim;
       };
 
       recognition.onend = () => {
-        listening = false;
-        micButton.classList.remove("listening");
-        micButton.innerText = "🎤";
+        if (recognizing) recognition.start();
       };
-
-      recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        input.value = transcript;
-        sendMessage();
-      };
-    } else {
-      micButton.style.display = "none";
     }
 
     function toggleMic() {
-      if (listening) {
+      if (!recognition) return;
+      if (recognizing) {
         recognition.stop();
+        recognizing = false;
+        document.getElementById('micBtn').style.background = '';
       } else {
         recognition.start();
+        recognizing = true;
+        document.getElementById('micBtn').style.background = 'red';
       }
     }
 
-    function sendMessage() {
-      const message = input.value.trim();
-      if (!message) return;
+    function appendMessage(role, text, typing = false) {
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'message ' + role;
+      chatbox.appendChild(msgDiv);
 
-      appendMessage("user", message);
-      input.value = "";
-
-      fetch("/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message })
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data.reply) {
-          appendMessage("bot", data.reply);
-          speakText(data.reply);
-        } else if (data.error) {
-          appendMessage("bot", "Error: " + data.error);
+      if (typing) {
+        let i = 0;
+        function typeChar() {
+          if (i < text.length) {
+            msgDiv.textContent = text.substring(0, i+1);
+            i++;
+            chatbox.scrollTop = chatbox.scrollHeight;
+            setTimeout(typeChar, 30);
+          }
         }
-      });
-    }
+        typeChar();
+      } else {
+        msgDiv.textContent = text;
+      }
 
-    function appendMessage(sender, text) {
-      const msg = document.createElement("div");
-      msg.className = "message " + sender;
-      msg.innerText = (sender === "user" ? "You: " : "Bot: ") + text;
-      chatbox.appendChild(msg);
       chatbox.scrollTop = chatbox.scrollHeight;
     }
 
-    function speakText(text) {
-      if ('speechSynthesis' in window) {
-        const utterance = new SpeechSynthesisUtterance(text);
-        speechSynthesis.speak(utterance);
+    async function sendMessage() {
+      const userMessage = messageInput.value.trim();
+      if (!userMessage) return;
+
+      appendMessage('user', 'You: ' + userMessage);
+      messageInput.value = '';
+
+      const res = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userMessage })
+      });
+
+      const data = await res.json();
+      if (data.reply) {
+        appendMessage('assistant', 'Bot: ' + data.reply, true);
+      } else if (data.error) {
+        appendMessage('assistant', 'Error: ' + data.error);
       }
     }
   </script>
