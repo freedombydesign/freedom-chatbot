@@ -15,19 +15,20 @@ def home():
 def chat():
     global conversation_history
     try:
-        user_message = request.json.get("message")
+        data = request.get_json(force=True)  # ensures we parse JSON correctly
+        user_message = data.get("message")
+
         if not user_message:
             return jsonify({"error": "Message is required"}), 400
 
         # Add user message to history
         conversation_history.append({"role": "user", "content": user_message})
+        # Keep only last 10 messages for context
+        conversation_history[:] = conversation_history[-10:]
 
-        # Keep only last 20 messages for context
-        conversation_history = conversation_history[-20:]
-
-        # Call OpenAI API
+        # Get response from GPT-4o-mini (cost-effective)
         response = client.chat.completions.create(
-            model="gpt-4o-mini",  # cost-effective model for now
+            model="gpt-4o-mini",
             messages=[{"role": "system", "content": "You are a helpful assistant."}] + conversation_history
         )
 
@@ -42,4 +43,4 @@ def chat():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000)
+    app.run(host='0.0.0.0', port=10000, debug=True)
