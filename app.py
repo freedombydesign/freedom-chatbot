@@ -4,7 +4,7 @@ import os
 
 app = Flask(__name__, static_folder=".")
 
-# Configure the API key
+# Set up the OpenAI API key from environment variable
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 @app.route("/")
@@ -24,7 +24,7 @@ def chat():
             messages=[{"role": "user", "content": user_message}]
         )
 
-        reply = completion.choices[0].message["content"]
+        reply = completion["choices"][0]["message"]["content"]
         return jsonify({"reply": reply})
 
     except Exception as e:
