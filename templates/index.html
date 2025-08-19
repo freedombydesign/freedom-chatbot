@@ -2,111 +2,118 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Chatbot with Voice and Typing Effect</title>
+  <title>Chatbot with Voice</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #f4f4f4; }
-    #chatbox { width: 400px; height: 400px; border: 1px solid #ccc; background: #fff; overflow-y: scroll; margin: 20px auto; padding: 10px; }
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    #chatbox { border: 1px solid #ccc; padding: 10px; width: 400px; height: 400px; overflow-y: auto; }
     .message { margin: 5px 0; }
-    .user { color: blue; }
-    .assistant { color: green; }
-    #controls { width: 400px; margin: auto; display: flex; }
-    #message { flex: 1; padding: 5px; }
-    button { padding: 5px 10px; margin-left: 5px; }
+    .user { font-weight: bold; color: blue; }
+    .bot { font-weight: bold; color: green; }
+    #controls { margin-top: 10px; }
+    button { margin-right: 5px; }
   </style>
 </head>
 <body>
+  <h1>Chatbot with Voice</h1>
   <div id="chatbox"></div>
+  <input type="text" id="messageInput" placeholder="Type your message">
+  <button onclick="sendMessage()">Send</button>
+
   <div id="controls">
-    <input type="text" id="message" placeholder="Type a message...">
-    <button onclick="sendMessage()">Send</button>
-    <button onclick="toggleMic()" id="micBtn">🎤</button>
+    <button id="micButton">🎤 Start Recording</button>
+    <button id="stopButton" disabled>⏹ Stop Recording</button>
   </div>
 
   <script>
     const chatbox = document.getElementById('chatbox');
-    const messageInput = document.getElementById('message');
-    let recognizing = false;
+    const micButton = document.getElementById('micButton');
+    const stopButton = document.getElementById('stopButton');
     let recognition;
 
-    if ('webkitSpeechRecognition' in window) {
-      recognition = new webkitSpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
-
-      recognition.onresult = (event) => {
-        let interim = '';
-        let finalTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript;
-          } else {
-            interim += event.results[i][0].transcript;
-          }
-        }
-        messageInput.value = finalTranscript || interim;
-      };
-
-      recognition.onend = () => {
-        if (recognizing) recognition.start();
-      };
-    }
-
-    function toggleMic() {
-      if (!recognition) return;
-      if (recognizing) {
-        recognition.stop();
-        recognizing = false;
-        document.getElementById('micBtn').style.background = '';
-      } else {
-        recognition.start();
-        recognizing = true;
-        document.getElementById('micBtn').style.background = 'red';
-      }
-    }
-
-    function appendMessage(role, text, typing = false) {
-      const msgDiv = document.createElement('div');
-      msgDiv.className = 'message ' + role;
-      chatbox.appendChild(msgDiv);
-
-      if (typing) {
-        let i = 0;
-        function typeChar() {
-          if (i < text.length) {
-            msgDiv.textContent = text.substring(0, i+1);
-            i++;
-            chatbox.scrollTop = chatbox.scrollHeight;
-            setTimeout(typeChar, 30);
-          }
-        }
-        typeChar();
-      } else {
-        msgDiv.textContent = text;
-      }
-
+    function appendMessage(sender, text) {
+      const div = document.createElement('div');
+      div.className = 'message ' + sender;
+      div.textContent = sender.toUpperCase() + ': ' + text;
+      chatbox.appendChild(div);
       chatbox.scrollTop = chatbox.scrollHeight;
     }
 
-    async function sendMessage() {
-      const userMessage = messageInput.value.trim();
-      if (!userMessage) return;
+    async function sendMessage(text) {
+      const input = document.getElementById('messageInput');
+      const message = text || input.value;
+      if (!message.trim()) return;
+      appendMessage('user', message);
+      input.value = '';
 
-      appendMessage('user', 'You: ' + userMessage);
-      messageInput.value = '';
-
-      const res = await fetch('/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMessage })
-      });
-
-      const data = await res.json();
-      if (data.reply) {
-        appendMessage('assistant', 'Bot: ' + data.reply, true);
-      } else if (data.error) {
-        appendMessage('assistant', 'Error: ' + data.error);
+      try {
+        const res = await fetch('/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message })
+        });
+        const data = await res.json();
+        if (data.reply) {
+          typeMessage('bot', data.reply);
+        } else {
+          appendMessage('bot', 'Error: ' + (data.error || 'Unknown error'));
+        }
+      } catch (err) {
+        appendMessage('bot', 'Error: ' + err.message);
       }
+    }
+
+    function typeMessage(sender, text, speed = 30) {
+      const div = document.createElement('div');
+      div.className = 'message ' + sender;
+      chatbox.appendChild(div);
+
+      let i = 0;
+      function typing() {
+        if (i < text.length) {
+          div.textContent = sender.toUpperCase() + ': ' + text.substring(0, i + 1);
+          i++;
+          setTimeout(typing, speed);
+          chatbox.scrollTop = chatbox.scrollHeight;
+        }
+      }
+      typing();
+    }
+
+    // Voice recognition setup
+    if ('webkitSpeechRecognition' in window) {
+      recognition = new webkitSpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = false;
+      recognition.lang = 'en-US';
+
+      recognition.onresult = function(event) {
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          if (event.results[i].isFinal) {
+            const transcript = event.results[i][0].transcript.trim();
+            sendMessage(transcript);
+          }
+        }
+      };
+
+      recognition.onerror = function(event) {
+        console.error('Speech recognition error', event);
+      };
+
+      micButton.onclick = () => {
+        recognition.start();
+        micButton.disabled = true;
+        stopButton.disabled = false;
+      };
+
+      stopButton.onclick = () => {
+        recognition.stop();
+        micButton.disabled = false;
+        stopButton.disabled = true;
+      };
+    } else {
+      micButton.disabled = true;
+      stopButton.disabled = true;
+      alert('Speech recognition not supported in this browser. Use Chrome.');
     }
   </script>
 </body>
