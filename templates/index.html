@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Freedom Chatbot</title>
   <style>
     body {
       font-family: Arial, sans-serif;
-      background: #f4f6f9;
+      background: #f0f0f5;
       display: flex;
       justify-content: center;
       align-items: center;
@@ -16,7 +16,7 @@
     }
     .chat-container {
       width: 400px;
-      max-width: 95%;
+      max-width: 90%;
       background: #fff;
       border-radius: 12px;
       box-shadow: 0 4px 10px rgba(0,0,0,0.1);
@@ -25,10 +25,9 @@
       overflow: hidden;
     }
     .chat-header {
-      background: #4A90E2;
+      background: #4a90e2;
       color: #fff;
       padding: 15px;
-      font-size: 18px;
       font-weight: bold;
       text-align: center;
     }
@@ -48,7 +47,7 @@
     }
     .user {
       align-self: flex-end;
-      background: #DCF8C6;
+      background: #dcf8c6;
     }
     .bot {
       align-self: flex-start;
@@ -66,15 +65,11 @@
       font-size: 16px;
     }
     .chat-input button {
-      background: #4A90E2;
+      background: #4a90e2;
       color: white;
       border: none;
       padding: 12px 20px;
       cursor: pointer;
-      font-size: 16px;
-    }
-    .chat-input button:hover {
-      background: #357ABD;
     }
   </style>
 </head>
@@ -90,27 +85,31 @@
 
   <script>
     async function sendMessage() {
-      const input = document.getElementById('userInput');
+      const input = document.getElementById("userInput");
       const message = input.value.trim();
       if (!message) return;
 
-      displayMessage(message, 'user');
-      input.value = '';
+      displayMessage(message, "user");
+      input.value = "";
 
-      const response = await fetch('/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message })
-      });
+      try {
+        const response = await fetch("/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message })
+        });
 
-      const data = await response.json();
-      displayMessage(data.reply, 'bot');
+        const data = await response.json();
+        displayMessage(data.reply, "bot");
+      } catch (error) {
+        displayMessage("Error: Could not reach the server.", "bot");
+      }
     }
 
     function displayMessage(text, sender) {
-      const chatMessages = document.getElementById('chatMessages');
-      const messageDiv = document.createElement('div');
-      messageDiv.className = 'message ' + sender;
+      const chatMessages = document.getElementById("chatMessages");
+      const messageDiv = document.createElement("div");
+      messageDiv.classList.add("message", sender);
       messageDiv.innerText = text;
       chatMessages.appendChild(messageDiv);
       chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -118,4 +117,3 @@
   </script>
 </body>
 </html>
-
