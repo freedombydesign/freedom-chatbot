@@ -1,34 +1,28 @@
-from flask import Flask, request, jsonify, send_from_directory
-import openai
-import os
+from flask import Flask, request, jsonify
+from openai import OpenAI
 
-app = Flask(__name__, static_folder=".")
+app = Flask(__name__)
+client = OpenAI()
 
-# Set up the OpenAI API key from environment variable
-openai.api_key = os.getenv("OPENAI_API_KEY")
-
-@app.route("/")
-def serve_index():
-    return send_from_directory(app.static_folder, "index.html")
-
-@app.route("/chat", methods=["POST"])
+@app.route('/chat', methods=['POST'])
 def chat():
     try:
-        data = request.get_json(silent=True) or {}
-        user_message = (data.get("message") or "").strip()
+        user_message = request.json.get("message")
         if not user_message:
-            return jsonify({"error": "Empty message."}), 400
+            return jsonify({"error": "Message is required"}), 400
 
-        completion = openai.ChatCompletion.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": user_message}]
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": user_message}
+            ]
         )
 
-        reply = completion["choices"][0]["message"]["content"]
+        reply = response.choices[0].message.content
         return jsonify({"reply": reply})
-
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=10000)
