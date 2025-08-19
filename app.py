@@ -4,7 +4,7 @@ from openai import OpenAI
 app = Flask(__name__)
 client = OpenAI()
 
-# Store conversation history (up to 50 messages)
+# Store conversation history (basic in-memory version)
 conversation_history = []
 
 @app.route('/')
@@ -22,10 +22,10 @@ def chat():
         # Add user message to history
         conversation_history.append({"role": "user", "content": user_message})
 
-        # Keep only last 50 messages
+        # Keep longer history (last 50 messages instead of 10)
         conversation_history = conversation_history[-50:]
 
-        # Create assistant response
+        # Generate reply from OpenAI
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "system", "content": "You are a helpful assistant."}] + conversation_history
@@ -37,6 +37,7 @@ def chat():
         conversation_history.append({"role": "assistant", "content": reply})
 
         return jsonify({"reply": reply})
+    
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
