@@ -1,57 +1,101 @@
-<div id="chatbar">
-<input id="text" placeholder="Ask me anything...">
-<button id="sendBtn">➤</button>
-<button id="micBtn">🎤</button>
-<button id="attachBtn">📎</button>
-<input type="file" id="fileInput" style="display:none" />
-</div>
-<div id="messages"></div>
+<!DOCTYPE html>
+const text = document.getElementById("text");
+const sendBtn = document.getElementById("sendBtn");
+const micBtn = document.getElementById("micBtn");
+const attachBtn = document.getElementById("attachBtn");
+const fileInput = document.getElementById("fileInput");
+let pendingFiles = [];
+let mediaRecorder, audioChunks = [], isRecording = false;
 
 
-<script>
-let isRecording = false, mediaRecorder, pendingFiles = [];
+function addMessage(msg, sender){
+let div = document.createElement("div");
+div.className = sender;
+div.textContent = msg;
+messages.appendChild(div);
+messages.scrollTop = messages.scrollHeight;
+}
 
 
-// Send message
+// --- Send Message ---
 function sendMessage(){
 if(!text.value.trim() && pendingFiles.length===0) return;
+
+
+addMessage(text.value, "user");
+
+
 const formData = new FormData();
 formData.append("message", text.value);
-pendingFiles.forEach(f=>formData.append("files",f));
-fetch("/chat", { method:"POST", body: formData })
-.then(r=>r.json()).then(d=>addMessage(d.reply,"assistant"));
-text.value=""; pendingFiles=[];
+pendingFiles.forEach(f => formData.append("files", f));
+
+
+text.value = "";
+pendingFiles = [];
+document.querySelectorAll(".preview").forEach(p=>p.remove());
+
+
+fetch("/chat", {method:"POST", body: formData})
+.then(r=>r.json())
+.then(d=>addMessage(d.reply, "assistant"));
 }
 
 
-// Enter = send
-text.addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); sendMessage(); }});
+sendBtn.onclick = sendMessage;
+text.addEventListener("keydown", e=>{ if(e.key==="Enter" && !e.ctrlKey){ e.preventDefault(); sendMessage(); } });
 
 
-// Mic toggle
+// --- Mic ---
 micBtn.onclick = async ()=>{
 if(!isRecording){
-const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+let stream = await navigator.mediaDevices.getUserMedia({audio:true});
 mediaRecorder = new MediaRecorder(stream);
+audioChunks = [];
+mediaRecorder.ondataavailable = e=> audioChunks.push(e.data);
+mediaRecorder.onstop = ()=>{
+const audioBlob = new Blob(audioChunks, {type:"audio/webm"});
+const formData = new FormData();
+formData.append("audio", audioBlob);
+fetch("/voice", {method:"POST", body: formData})
+.then(r=>r.json())
+.then(d=>{ text.value = d.transcript; });
+};
 mediaRecorder.start();
-micBtn.textContent="⏹"; isRecording=true;
+micBtn.textContent = "⏹️";
+isRecording = true;
 } else {
 mediaRecorder.stop();
-micBtn.textContent="🎤"; isRecording=false;
+micBtn.textContent = "🎤";
+isRecording = false;
 }
-};
+}
 
 
-// Attach button
+// --- Attach ---
 attachBtn.onclick = ()=> fileInput.click();
 fileInput.onchange = ()=>{
 [...fileInput.files].forEach(file=>{
 pendingFiles.push(file);
-let preview=document.createElement("div");
-preview.textContent=file.name+" ❌";
-preview.onclick=()=>{ pendingFiles=pendingFiles.filter(f=>f!==file); preview.remove(); };
-messages.appendChild(preview);
+let prev = document.createElement("div");
+prev.className="preview";
+if(file.type.startsWith("image/")){
+let img = document.createElement("img");
+img.src = URL.createObjectURL(file);
+prev.appendChild(img);
+} else {
+prev.textContent = file.name;
+}
+let removeBtn = document.createElement("span");
+removeBtn.className = "remove";
+removeBtn.textContent = " X";
+removeBtn.onclick = ()=>{
+pendingFiles = pendingFiles.filter(f=>f!==file);
+prev.remove();
+}
+prev.appendChild(removeBtn);
+messages.appendChild(prev);
 });
-};
+}
 </script>
-```
+</body>
+</html>
