@@ -1,6 +1,9 @@
 from flask import Flask, request, jsonify
 import os
-import openai
+from openai import OpenAI
+
+client = OpenAI()
+
 
 app = Flask(__name__)
 
@@ -25,9 +28,11 @@ def chat():
             return jsonify({"error": "No message provided"}), 400
 
         # Call OpenAI API (ChatGPT-like behavior)
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": user_message}]
+     response = client.chat.completions.create(
+    model="gpt-3.5-turbo",
+    messages=[{"role": "user", "content": user_message}]
+)
+
         )
 
         reply = response["choices"][0]["message"]["content"]
