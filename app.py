@@ -1,61 +1,60 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify
 from openai import OpenAI
+import os
 
 app = Flask(__name__)
 client = OpenAI()
 
-# Store conversation history per user (in memory for demo; use DB/Redis in production)
+# Store conversation history (use DB/Redis in production)
 conversations = {}
 
-@app.route("/")
-def home():
-    return render_template("index.html")
+# Hybrid router
+def route_message(message: str):
+    if len(message) < 15 and not any(
+        word in message.lower()
+        for word in ["anxious", "therapy", "help", "struggling", "practice", "explain"]
+    ):
+        return "gpt-4.1-mini"  # cheap, casual
+    return "gpt-4.1"  # deeper reasoning & empathy
 
 @app.route("/chat", methods=["POST"])
 def chat():
     data = request.json
     user_id = data.get("user_id", "default")
     user_message = data.get("message")
+    uploaded_files = data.get("files", [])
 
-    if not user_message:
-        return jsonify({"error": "Message is required"}), 400
-
-    # Initialize conversation if new
+    # Initialize user conversation
     if user_id not in conversations:
         conversations[user_id] = [
             {
                 "role": "system",
                 "content": (
                     "You are a warm, conversational AI assistant. "
-                    "Speak in a natural, human-like way, using casual, friendly expressions "
-                    "when appropriate (like 'Hey, how’s it going?' or 'Got it, let’s fix that'). "
-                    "You understand nuance, tone, and cultural context. "
-                    "You can seamlessly respond in any language the user chooses. "
-                    "Keep replies clear, empathetic, and approachable. "
-                    "Do not remind people you are an AI unless they directly ask. "
-                    "Balance being concise with being engaging."
-                )
+                    "You use a natural, friendly tone, like a human. "
+                    "You understand nuance, multiple languages, and can respond empathetically. "
+                    "Keep answers engaging but not too long."
+                ),
             }
         ]
 
+    # Add user message
     conversations[user_id].append({"role": "user", "content": user_message})
 
-    try:
-        completion = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=conversations[user_id],
-            max_tokens=500,
-            temperature=0.85
-        )
+    # Route to correct GPT model
+    model_choice = route_message(user_message)
 
-        reply = completion.choices[0].message.content
-        conversations[user_id].append({"role": "assistant", "content": reply})
+    # Call OpenAI
+    completion = client.chat.completions.create(
+        model=model_choice,
+        messages=conversations[user_id],
+        max_tokens=400,
+        temperature=0.85,
+    )
 
-        return jsonify({"reply": reply})
+    reply = completion.choices[0].message["content"]
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    # Add assistant reply to history
+    conversations[user_id].append({"role": "assistant", "content": reply})
 
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000, debug=True)
+    return jsonify({"reply": reply})
