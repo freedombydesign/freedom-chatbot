@@ -1,40 +1,38 @@
 from flask import Flask, request, jsonify
-import requests
 import os
+import openai
 
 app = Flask(__name__)
 
-# ✅ Store conversations per user (simple memory)
-conversations = {}
+# Make sure you set your API key in Render's environment settings
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
+@app.route("/")
+def home():
+return "<h1>Chatbot Backend Running ✅</h1><p>Send POST requests to /chat</p>", 200
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    user_id = request.json.get("user", "default")
-    message = request.json.get("message")
+try:
+data = request.get_json()
+user_message = data.get("message")
 
-    if user_id not in conversations:
-        conversations[user_id] = []
+if not user_message:
+return jsonify({"error": "No message provided"}), 400
 
-    conversations[user_id].append({"role": "user", "content": message})
+# Call OpenAI API (ChatGPT-like behavior)
+response = openai.ChatCompletion.create(
+model="gpt-3.5-turbo",
+messages=[{"role": "user", "content": user_message}]
+)
 
-    # Example response (replace with AI call)
-    response = {"reply": f"Echo: {message}"}
+reply = response["choices"][0]["message"]["content"]
+return jsonify({"reply": reply})
 
-    conversations[user_id].append({"role": "assistant", "content": response["reply"]})
-
-    return jsonify(response)
-
-@app.route("/upload", methods=["POST"])
-def upload_file():
-    if "file" not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-    file = request.files["file"]
-    filepath = os.path.join("uploads", file.filename)
-    os.makedirs("uploads", exist_ok=True)
-    file.save(filepath)
-    return jsonify({"status": "success", "filename": file.filename})
+except Exception as e:
+return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    # ✅ IMPORTANT FIX: Bind to 0.0.0.0 and use PORT from Render
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=False)
+port = int(os.environ.get("PORT", 10000)) # Render will provide PORT
+app.run(host="0.0.0.0", port=port)
+
