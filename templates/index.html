@@ -1,101 +1,83 @@
 <!DOCTYPE html>
-const text = document.getElementById("text");
-const sendBtn = document.getElementById("sendBtn");
-const micBtn = document.getElementById("micBtn");
-const attachBtn = document.getElementById("attachBtn");
-const fileInput = document.getElementById("fileInput");
-let pendingFiles = [];
-let mediaRecorder, audioChunks = [], isRecording = false;
+let recognition;
+let isRecording = false;
 
 
-function addMessage(msg, sender){
-let div = document.createElement("div");
-div.className = sender;
-div.textContent = msg;
-messages.appendChild(div);
-messages.scrollTop = messages.scrollHeight;
+// --- Display Messages ---
+function addMessage(text, sender) {
+const div = document.createElement("div");
+div.className = `msg ${sender}`;
+div.textContent = text;
+messagesDiv.appendChild(div);
+messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
 
 // --- Send Message ---
-function sendMessage(){
-if(!text.value.trim() && pendingFiles.length===0) return;
+async function sendMessage() {
+const text = input.value.trim();
+if (!text) return;
+addMessage(text, "user");
+input.value = "";
 
 
-addMessage(text.value, "user");
-
-
-const formData = new FormData();
-formData.append("message", text.value);
-pendingFiles.forEach(f => formData.append("files", f));
-
-
-text.value = "";
-pendingFiles = [];
-document.querySelectorAll(".preview").forEach(p=>p.remove());
-
-
-fetch("/chat", {method:"POST", body: formData})
-.then(r=>r.json())
-.then(d=>addMessage(d.reply, "assistant"));
-}
-
-
-sendBtn.onclick = sendMessage;
-text.addEventListener("keydown", e=>{ if(e.key==="Enter" && !e.ctrlKey){ e.preventDefault(); sendMessage(); } });
-
-
-// --- Mic ---
-micBtn.onclick = async ()=>{
-if(!isRecording){
-let stream = await navigator.mediaDevices.getUserMedia({audio:true});
-mediaRecorder = new MediaRecorder(stream);
-audioChunks = [];
-mediaRecorder.ondataavailable = e=> audioChunks.push(e.data);
-mediaRecorder.onstop = ()=>{
-const audioBlob = new Blob(audioChunks, {type:"audio/webm"});
-const formData = new FormData();
-formData.append("audio", audioBlob);
-fetch("/voice", {method:"POST", body: formData})
-.then(r=>r.json())
-.then(d=>{ text.value = d.transcript; });
-};
-mediaRecorder.start();
-micBtn.textContent = "⏹️";
-isRecording = true;
-} else {
-mediaRecorder.stop();
-micBtn.textContent = "🎤";
-isRecording = false;
-}
-}
-
-
-// --- Attach ---
-attachBtn.onclick = ()=> fileInput.click();
-fileInput.onchange = ()=>{
-[...fileInput.files].forEach(file=>{
-pendingFiles.push(file);
-let prev = document.createElement("div");
-prev.className="preview";
-if(file.type.startsWith("image/")){
-let img = document.createElement("img");
-img.src = URL.createObjectURL(file);
-prev.appendChild(img);
-} else {
-prev.textContent = file.name;
-}
-let removeBtn = document.createElement("span");
-removeBtn.className = "remove";
-removeBtn.textContent = " X";
-removeBtn.onclick = ()=>{
-pendingFiles = pendingFiles.filter(f=>f!==file);
-prev.remove();
-}
-prev.appendChild(removeBtn);
-messages.appendChild(prev);
+const res = await fetch("http://127.0.0.1:5000/chat", {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({ user_id: "demo", message: text })
 });
+const data = await res.json();
+addMessage(data.response, "assistant");
 }
+
+
+sendBtn.addEventListener("click", sendMessage);
+input.addEventListener("keypress", e => { if (e.key === "Enter") sendMessage(); });
+
+
+// --- File Upload ---
+fileInput.addEventListener("change", async () => {
+for (const file of fileInput.files) {
+const formData = new FormData();
+formData.append("file", file);
+const res = await fetch("http://127.0.0.1:5000/upload", { method: "POST", body: formData });
+const data = await res.json();
+if (data.success) addMessage(`Uploaded: ${data.filename}`, "assistant");
+}
+});
+
+
+// --- Voice Recognition ---
+if ('webkitSpeechRecognition' in window) {
+recognition = new webkitSpeechRecognition();
+recognition.continuous = true;
+recognition.interimResults = true;
+
+
+recognition.onresult = (event) => {
+let transcript = "";
+for (let i = event.resultIndex; i < event.results.length; i++) {
+transcript += event.results[i][0].transcript;
+}
+input.value = transcript;
+};
+
+
+recognition.onend = () => { isRecording = false; micBtn.textContent = "🎤"; };
+}
+
+
+micBtn.addEventListener("click", () => {
+if (isRecording) {
+recognition.stop();
+isRecording = false;
+micBtn.textContent = "🎤";
+} else {
+recognition.start();
+isRecording = true;
+micBtn.textContent = "⏹";
+}
+});
 </script>
 </body>
 </html>
