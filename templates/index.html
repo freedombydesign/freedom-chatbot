@@ -1,128 +1,180 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Assistant</title>
+  <meta charset="UTF-8" />
+  <title>AI Assistant</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f7f7f7; }
-    #chat-container { height: 90vh; overflow-y: auto; padding: 1rem; }
-    .bubble { max-width: 70%; padding: 10px; margin: 8px; border-radius: 12px; }
-    .user { background: #0078ff; color: #fff; margin-left: auto; }
-    .assistant { background: #e5e5ea; color: #000; margin-right: auto; }
-    #input-container { display: flex; padding: 10px; background: white; border-top: 1px solid #ddd; }
-    #message-input { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #ccc; resize: none; }
-    #send-btn, #mic-btn, #file-btn { margin-left: 8px; cursor: pointer; border: none; background: none; font-size: 20px; }
-    #mic-btn.recording { color: red; animation: pulse 1s infinite; }
-    @keyframes pulse { 0% {opacity: 1;} 50% {opacity: 0.5;} 100% {opacity: 1;} }
-    img.preview { max-width: 120px; max-height: 120px; border-radius: 8px; margin-top: 5px; display: block; }
+    body { font-family: sans-serif; margin: 0; background: #f5f5f5; }
+    #chat-container { height: 90vh; overflow-y: auto; padding: 1em; display: flex; flex-direction: column; }
+    .bubble { max-width: 70%; margin: .5em; padding: .8em 1em; border-radius: 1.2em; word-wrap: break-word; }
+    .user { background: #007bff; color: white; align-self: flex-end; }
+    .bot { background: #eaeaea; color: #333; align-self: flex-start; }
+    #input-container { display: flex; padding: .5em; background: white; align-items: center; }
+    #message-input { flex: 1; padding: .5em; border: 1px solid #ccc; border-radius: 6px; resize: none; }
+    #send-btn, #mic-btn, #upload-btn, #clear-btn { margin-left: .5em; cursor: pointer; border: none; background: none; font-size: 1.3em; }
+    #chat-container::-webkit-scrollbar { width: 8px; }
+    #chat-container::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
+    .recording { color: red; animation: pulse 1s infinite; }
+    @keyframes pulse { 0% {opacity: 1;} 50% {opacity: 0.4;} 100% {opacity: 1;} }
   </style>
 </head>
 <body>
   <div id="chat-container"></div>
   <div id="input-container">
     <textarea id="message-input" rows="1" placeholder="Type a message..."></textarea>
-    <input type="file" id="file-input" multiple hidden>
-    <button id="file-btn">📎</button>
+    <button id="clear-btn">❌</button>
+    <button id="upload-btn">📎</button>
     <button id="mic-btn">🎤</button>
     <button id="send-btn">➡️</button>
   </div>
 
-  <script>
-    const chatContainer = document.getElementById("chat-container");
-    const input = document.getElementById("message-input");
-    const sendBtn = document.getElementById("send-btn");
-    const micBtn = document.getElementById("mic-btn");
-    const fileBtn = document.getElementById("file-btn");
-    const fileInput = document.getElementById("file-input");
+<script>
+const chatContainer = document.getElementById("chat-container");
+const input = document.getElementById("message-input");
+const sendBtn = document.getElementById("send-btn");
+const micBtn = document.getElementById("mic-btn");
+const uploadBtn = document.getElementById("upload-btn");
+const clearBtn = document.getElementById("clear-btn");
 
-    // ✅ Auto-scroll
-    function scrollToBottom() {
-      chatContainer.scrollTop = chatContainer.scrollHeight;
-    }
+let recognition;
+let userLang = navigator.language || "en-US";
+let finalTranscript = "";
 
-    function addBubble(text, sender, isHtml=false) {
-      const div = document.createElement("div");
-      div.className = "bubble " + sender;
-      div.innerHTML = isHtml ? text : text.replace(/\n/g, "<br>");
-      chatContainer.appendChild(div);
-      scrollToBottom();
-    }
+// ---------- Helpers ----------
+function addBubble(text, sender="bot") {
+  const div = document.createElement("div");
+  div.className = `bubble ${sender}`;
+  div.innerHTML = text;
+  chatContainer.appendChild(div);
+  chatContainer.scrollTop = chatContainer.scrollHeight;
+}
 
-    // ✅ Handle sending
-    async function sendMessage() {
-      const msg = input.value.trim();
-      if (!msg && fileInput.files.length === 0) return;
+// ---------- Send ----------
+async function sendMessage() {
+  const text = input.value.trim();
+  if (!text) return;
 
-      addBubble(msg, "user");
+  addBubble(text, "user");
+  input.value = "";
+  finalTranscript = ""; // reset once sent
 
-      const formData = new FormData();
-      formData.append("message", msg);
-      for (let file of fileInput.files) {
-        formData.append("files", file);
-      }
+  // stop mic if recording
+  if (recognition && micBtn.classList.contains("recording")) {
+    recognition.stop();
+  }
 
-      recognition?.stop(); // stop mic if active
-      micBtn.classList.remove("recording");
-
-      const res = await fetch("http://127.0.0.1:5000/chat", {
-        method: "POST",
-        body: formData
-      });
-      const data = await res.json();
-      addBubble(data.reply, "assistant");
-      input.value = "";
-      fileInput.value = "";
-    }
-
-    sendBtn.onclick = sendMessage;
-    fileBtn.onclick = () => fileInput.click();
-
-    // ✅ Enter = send, Ctrl+Enter = newline
-    input.addEventListener("keydown", e => {
-      if (e.key === "Enter" && !e.ctrlKey) {
-        e.preventDefault();
-        sendMessage();
-      }
+  // First try search
+  let reply;
+  try {
+    const searchRes = await fetch("http://127.0.0.1:5000/search", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({query: text})
     });
-
-    // ✅ Paste image support
-    document.addEventListener("paste", e => {
-      if (e.clipboardData.files.length > 0) {
-        fileInput.files = e.clipboardData.files;
-        addBubble("📎 Image pasted: " + fileInput.files[0].name, "user");
-      }
-    });
-
-    // ✅ Speech Recognition
-    let recognition;
-    let userLang = navigator.language || "en-US";
-    if ("webkitSpeechRecognition" in window) {
-      recognition = new webkitSpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = userLang;
-
-      recognition.onresult = e => {
-        let transcript = "";
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          transcript += e.results[i][0].transcript;
-        }
-        input.value = transcript;
-      };
-
-      recognition.onstart = () => micBtn.classList.add("recording");
-      recognition.onend = () => micBtn.classList.remove("recording");
+    const searchData = await searchRes.json();
+    if (searchData.result && searchData.result !== "No relevant results found.") {
+      reply = searchData.result;
     }
+  } catch (e) { console.warn("Search failed, falling back to GPT."); }
 
-    micBtn.onclick = () => {
-      if (!recognition) return alert("Speech recognition not supported in this browser.");
-      if (micBtn.classList.contains("recording")) {
-        recognition.stop();
+  // If no search result, call GPT
+  if (!reply) {
+    const gptRes = await fetch("http://127.0.0.1:5000/chat", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({message: text})
+    });
+    const gptData = await gptRes.json();
+    reply = gptData.reply;
+  }
+
+  addBubble(reply, "bot");
+}
+
+sendBtn.onclick = sendMessage;
+
+// ---------- Enter vs Ctrl+Enter ----------
+input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    if (e.ctrlKey) {
+      input.value += "\n";
+    } else {
+      e.preventDefault();
+      sendMessage();
+    }
+  }
+});
+
+// ---------- Mic ----------
+if ("webkitSpeechRecognition" in window) {
+  recognition = new webkitSpeechRecognition();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = userLang;
+
+  recognition.onstart = () => micBtn.classList.add("recording");
+  recognition.onend = () => micBtn.classList.remove("recording");
+
+  recognition.onresult = (event) => {
+    let interim = "";
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      if (event.results[i].isFinal) {
+        finalTranscript += event.results[i][0].transcript + " ";
       } else {
-        recognition.lang = userLang;
-        recognition.start();
+        interim += event.results[i][0].transcript;
       }
-    };
-  </script>
+    }
+    input.value = finalTranscript + interim;
+  };
+}
+
+micBtn.onclick = () => {
+  if (!recognition) {
+    alert("Speech recognition not supported in this browser.");
+    return;
+  }
+  if (micBtn.classList.contains("recording")) {
+    recognition.stop();
+  } else {
+    finalTranscript = input.value; // preserve existing text
+    recognition.lang = userLang;
+    recognition.start();
+  }
+};
+
+// ---------- File Upload ----------
+uploadBtn.onclick = () => {
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.multiple = true;
+  fileInput.onchange = () => {
+    [...fileInput.files].forEach(file => {
+      addBubble(`📎 ${file.name}`, "user");
+      const formData = new FormData();
+      formData.append("file", file);
+      fetch("http://127.0.0.1:5000/upload", {method:"POST", body: formData});
+    });
+  };
+  fileInput.click();
+};
+
+// ---------- Paste Support ----------
+document.addEventListener("paste", (e) => {
+  if (e.clipboardData.files.length > 0) {
+    [...e.clipboardData.files].forEach(file => {
+      addBubble(`📎 ${file.name}`, "user");
+      const formData = new FormData();
+      formData.append("file", file);
+      fetch("http://127.0.0.1:5000/upload", {method:"POST", body: formData});
+    });
+  }
+});
+
+// ---------- Clear Input ----------
+clearBtn.onclick = () => {
+  input.value = "";
+  finalTranscript = "";
+};
+</script>
 </body>
 </html>
