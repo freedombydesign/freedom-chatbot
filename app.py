@@ -4,43 +4,62 @@ from openai import OpenAI
 app = Flask(__name__)
 client = OpenAI()
 
-# Store conversation history (basic in-memory version)
-conversation_history = []
+# Store conversation history per user (in memory for demo; use DB/Redis in production)
+conversations = {}
 
-@app.route('/')
+@app.route("/")
 def home():
-    return render_template('index.html')
+    return render_template("index.html")
 
-@app.route('/chat', methods=['POST'])
+@app.route("/chat", methods=["POST"])
 def chat():
-    global conversation_history
+    data = request.json
+    user_id = data.get("user_id", "default")  # identify user/session
+    user_message = data.get("message")
+
+    if not user_message:
+        return jsonify({"error": "Message is required"}), 400
+
+    # Initialize new conversation if needed
+    if user_id not in conversations:
+        conversations[user_id] = [
+            {
+                "role": "system",
+                "content": (
+                    "You are a warm, conversational AI assistant. "
+                    "Speak in a natural, human-like way, using casual, friendly expressions "
+                    "when appropriate (like 'Hey, how’s it going?' or 'Got it, let’s fix that'). "
+                    "You understand nuance, tone, and cultural context. "
+                    "You can seamlessly respond in any language the user chooses. "
+                    "Keep replies clear, empathetic, and approachable. "
+                    "Do not remind people you are an AI unless they directly ask. "
+                    "Balance being concise with being engaging."
+                )
+            }
+        ]
+
+    # Add user message
+    conversations[user_id].append({"role": "user", "content": user_message})
+
     try:
-        data = request.get_json(force=True)  # ensures we parse JSON correctly
-        user_message = data.get("message")
-
-        if not user_message:
-            return jsonify({"error": "Message is required"}), 400
-
-        # Add user message to history
-        conversation_history.append({"role": "user", "content": user_message})
-        # Keep only last 10 messages for context
-        conversation_history[:] = conversation_history[-10:]
-
-        # Get response from GPT-4o-mini (cost-effective)
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "system", "content": "You are a helpful assistant."}] + conversation_history
+        # Generate reply
+        completion = client.chat.completions.create(
+            model="gpt-4o-mini",   # fast + cost effective; change to gpt-4-turbo if you want
+            messages=conversations[user_id],
+            max_tokens=500,
+            temperature=0.85
         )
 
-        reply = response.choices[0].message.content
+        reply = completion.choices[0].message.content
 
         # Add assistant reply to history
-        conversation_history.append({"role": "assistant", "content": reply})
+        conversations[user_id].append({"role": "assistant", "content": reply})
 
         return jsonify({"reply": reply})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000, debug=True)
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000, debug=True)
