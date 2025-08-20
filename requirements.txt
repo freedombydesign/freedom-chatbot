@@ -1,5 +1,4 @@
-Flask
-requests
-gunicorn
+flask
 openai
-flask-cors
+gunicorn
+supabase
