@@ -1,18 +1,39 @@
 from flask import Flask, request, jsonify
 from openai import OpenAI
+import requests
 import os
 
 app = Flask(__name__)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+# Use a real search API (SerpAPI, Bing, or Tavily)
+SEARCH_API_KEY = os.getenv("SEARCH_API_KEY")
+SEARCH_ENGINE_URL = "https://api.tavily.com/search"  # Example: Tavily
+
 conversations = {}
 user_names = {}
+
+
+def web_search(query):
+    try:
+        resp = requests.post(
+            SEARCH_ENGINE_URL,
+            json={"api_key": SEARCH_API_KEY, "query": query, "max_results": 3},
+            timeout=10
+        )
+        data = resp.json()
+        if "results" in data and len(data["results"]) > 0:
+            snippets = [r.get("content", r.get("title", "")) for r in data["results"]]
+            return "\n".join(snippets[:3])
+        return "Sorry, I couldn’t find anything reliable just now."
+    except Exception as e:
+        return f"Search error: {e}"
+
 
 @app.route("/chat", methods=["POST"])
 def chat():
     user_id = request.remote_addr
     msg = request.form.get("message", "")
-    files = request.files.getlist("files")
 
     # Ask name if not set
     if user_id not in user_names:
@@ -24,47 +45,35 @@ def chat():
                 "role": "system",
                 "content": (
                     "You are a warm, conversational AI assistant. "
-                    "Speak in a natural, human-like way, using casual, friendly expressions. "
-                    "You can respond in any language. "
-                    "Use the user’s first name (" + user_names[user_id] + ") to personalize replies."
+                    "Speak in a natural, human-like way. "
+                    f"Use the user’s first name ({user_names[user_id]}) to personalize replies."
                 )
             }]
             return jsonify({"reply": f"Great to meet you, {user_names[user_id]}! What can I do for you today?"})
 
-    # Initialize conversation
+    # Initialize if missing
     if user_id not in conversations:
         conversations[user_id] = [{
             "role": "system",
-            "content": (
-                "You are a warm, conversational AI assistant. "
-                "Speak naturally, empathetically, and be engaging."
-            )
+            "content": "You are a warm, conversational AI assistant."
         }]
 
     conversations[user_id].append({"role": "user", "content": msg})
 
-    # Hybrid model routing
-    def route_message(message):
-        if len(message) < 15 and not any(word in message.lower() 
-            for word in ["anxious", "help", "therapy", "practice", "struggling"]):
-            return "gpt-4.1-mini"
-        return "gpt-4.1"
-
-    model = route_message(msg)
-
-    # If user explicitly asks for real-time info
+    # Routing: search vs model
     if any(w in msg.lower() for w in ["today", "latest", "current", "news", "president"]):
-        # Web search fallback (pseudo — replace with your real search API)
-        reply = "Let me quickly check the latest info for you..."
+        search_result = web_search(msg)
+        reply = f"Here’s what I found:\n{search_result}"
     else:
         completion = client.chat.completions.create(
-            model=model,
-            messages=conversations[user_id],
+            model="gpt-4.1",
+            messages=conversations[user_id]
         )
         reply = completion.choices[0].message.content
 
     conversations[user_id].append({"role": "assistant", "content": reply})
     return jsonify({"reply": reply})
+
 
 @app.route("/voice", methods=["POST"])
 def voice():
@@ -74,6 +83,7 @@ def voice():
         file=audio
     )
     return jsonify({"transcript": transcript.text})
+
 
 if __name__ == "__main__":
     app.run(debug=True)
