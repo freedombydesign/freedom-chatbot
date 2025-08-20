@@ -1,89 +1,82 @@
-from flask import Flask, request, jsonify
-from openai import OpenAI
-import requests
-import os
-
+## ✅ Fixed Backend (Flask, `app.py`)
 app = Flask(__name__)
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Use a real search API (SerpAPI, Bing, or Tavily)
+
+# Real search (Tavily or Bing)
 SEARCH_API_KEY = os.getenv("SEARCH_API_KEY")
-SEARCH_ENGINE_URL = "https://api.tavily.com/search"  # Example: Tavily
+SEARCH_URL = "https://api.tavily.com/search"
 
-conversations = {}
-user_names = {}
+
+conversations, user_names = {}, {}
+
+
+# Web search
 
 
 def web_search(query):
-    try:
-        resp = requests.post(
-            SEARCH_ENGINE_URL,
-            json={"api_key": SEARCH_API_KEY, "query": query, "max_results": 3},
-            timeout=10
-        )
-        data = resp.json()
-        if "results" in data and len(data["results"]) > 0:
-            snippets = [r.get("content", r.get("title", "")) for r in data["results"]]
-            return "\n".join(snippets[:3])
-        return "Sorry, I couldn’t find anything reliable just now."
-    except Exception as e:
-        return f"Search error: {e}"
+try:
+resp = requests.get(SEARCH_URL, params={"query": query, "max_results": 3}, headers={"Authorization": f"Bearer {SEARCH_API_KEY}"})
+data = resp.json()
+if "results" in data and data["results"]:
+return data["results"][0]["content"]
+return "Sorry, I couldn’t find anything reliable just now."
+except Exception as e:
+return f"Search error: {e}"
 
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    user_id = request.remote_addr
-    msg = request.form.get("message", "")
-
-    # Ask name if not set
-    if user_id not in user_names:
-        if not msg.strip():
-            return jsonify({"reply": "Hi! Before we get started, what’s your first name?"})
-        else:
-            user_names[user_id] = msg.strip().split()[0]
-            conversations[user_id] = [{
-                "role": "system",
-                "content": (
-                    "You are a warm, conversational AI assistant. "
-                    "Speak in a natural, human-like way. "
-                    f"Use the user’s first name ({user_names[user_id]}) to personalize replies."
-                )
-            }]
-            return jsonify({"reply": f"Great to meet you, {user_names[user_id]}! What can I do for you today?"})
-
-    # Initialize if missing
-    if user_id not in conversations:
-        conversations[user_id] = [{
-            "role": "system",
-            "content": "You are a warm, conversational AI assistant."
-        }]
-
-    conversations[user_id].append({"role": "user", "content": msg})
-
-    # Routing: search vs model
-    if any(w in msg.lower() for w in ["today", "latest", "current", "news", "president"]):
-        search_result = web_search(msg)
-        reply = f"Here’s what I found:\n{search_result}"
-    else:
-        completion = client.chat.completions.create(
-            model="gpt-4.1",
-            messages=conversations[user_id]
-        )
-        reply = completion.choices[0].message.content
-
-    conversations[user_id].append({"role": "assistant", "content": reply})
-    return jsonify({"reply": reply})
+user_id = request.remote_addr
+user_msg = request.form.get("message", "")
 
 
-@app.route("/voice", methods=["POST"])
-def voice():
-    audio = request.files["audio"]
-    transcript = client.audio.transcriptions.create(
-        model="gpt-4o-transcribe",
-        file=audio
-    )
-    return jsonify({"transcript": transcript.text})
+if user_id not in user_names:
+return jsonify({"reply": "👋 Hey! Before we get started, what’s your first name?"})
+
+
+if user_id not in conversations:
+conversations[user_id] = [
+{"role": "system", "content": "You are a warm, conversational AI assistant."}
+]
+
+
+conversations[user_id].append({"role": "user", "content": user_msg})
+
+
+# If greeting, set name
+if "my name is" in user_msg.lower():
+name = user_msg.split("is")[-1].strip().split()[0]
+user_names[user_id] = name.capitalize()
+return jsonify({"reply": f"Great to meet you, {name.capitalize()}! What can I do for you today?"})
+
+
+# If query requires live info
+if any(word in user_msg.lower() for word in ["today", "latest", "news", "president"]):
+info = web_search(user_msg)
+conversations[user_id].append({"role": "assistant", "content": info})
+return jsonify({"reply": info})
+
+
+# Otherwise, use OpenAI
+reply = openai.chat.completions.create(
+model="gpt-4o-mini",
+messages=conversations[user_id]
+)
+msg = reply.choices[0].message["content"]
+conversations[user_id].append({"role": "assistant", "content": msg})
+return jsonify({"reply": msg})
+
+
+@app.route("/upload", methods=["POST"])
+def upload():
+file = request.files["file"]
+path = os.path.join("uploads", file.filename)
+os.makedirs("uploads", exist_ok=True)
+file.save(path)
+return jsonify({"url": f"/uploads/{file.filename}"})
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+app.run(debug=True)
+```
