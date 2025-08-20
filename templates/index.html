@@ -4,98 +4,146 @@
   <meta charset="UTF-8">
   <title>AI Assistant</title>
   <style>
-    body { font-family: Arial; margin:0; display:flex; flex-direction:column; height:100vh; }
-    #chat-container { flex:1; overflow-y:auto; padding:1em; background:#f9f9f9; }
-    .msg { margin:0.5em 0; padding:0.7em; border-radius:12px; max-width:70%; }
-    .user { background:#0084ff; color:white; margin-left:auto; }
-    .assistant { background:#e5e5ea; color:black; margin-right:auto; }
-    #chat-input-container { display:flex; padding:0.5em; background:#fff; border-top:1px solid #ccc; align-items:center; }
-    #chat-input { flex:1; resize:none; padding:0.5em; border-radius:8px; }
-    button { margin-left:6px; cursor:pointer; }
-    #file-preview { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
-    .file-thumb { position:relative; width:60px; height:60px; border-radius:8px; overflow:hidden; border:1px solid #ccc; }
-    .file-thumb img, .file-thumb video { width:100%; height:100%; object-fit:cover; }
-    .remove { position:absolute; top:2px; right:2px; background:rgba(0,0,0,0.6); color:white; border:none; border-radius:50%; font-size:0.8rem; cursor:pointer; }
+    body { font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }
+    #messages { flex: 1; overflow-y: auto; padding: 1rem; background: #f4f4f4; }
+    .msg { margin: .5rem 0; padding: .5rem 1rem; border-radius: 12px; max-width: 70%; }
+    .user { background: #0084ff; color: white; align-self: flex-end; }
+    .assistant { background: #e5e5ea; color: black; align-self: flex-start; }
+    #input-bar { display: flex; padding: .5rem; background: white; }
+    #text { flex: 1; padding: .5rem; border-radius: 20px; border: 1px solid #ccc; }
+    #send, #mic, #attach { margin-left: .5rem; }
+    .preview { display: inline-block; margin: 5px; position: relative; }
+    .preview img, .preview video, .preview audio { max-width: 100px; border-radius: 8px; }
+    .remove { position: absolute; top: -6px; right: -6px; background: red; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; }
   </style>
 </head>
 <body>
-  <div id="chat-container"></div>
-
-  <div id="chat-input-container">
-    <label for="file-upload" id="attach-btn">📎</label>
-    <input type="file" id="file-upload" multiple hidden accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.gif,.mp4,.mp3,.wav">
-    
-    <textarea id="chat-input" placeholder="Type a message..."></textarea>
-    <button id="mic-btn">🎤</button>
-    <button id="send-btn">➤</button>
+  <div id="messages"></div>
+  <div id="input-bar">
+    <input id="text" placeholder="Ask me anything…" />
+    <input type="file" id="fileInput" multiple style="display:none" />
+    <button id="attach">📎</button>
+    <button id="mic">🎤</button>
+    <button id="send">➤</button>
   </div>
-  <div id="file-preview"></div>
 
 <script>
-const chat = document.getElementById("chat-container");
-const input = document.getElementById("chat-input");
-const sendBtn = document.getElementById("send-btn");
-const micBtn = document.getElementById("mic-btn");
-const fileUpload = document.getElementById("file-upload");
-const filePreview = document.getElementById("file-preview");
-let recognizing = false, recognition;
+const messages = document.getElementById("messages");
+const text = document.getElementById("text");
+const sendBtn = document.getElementById("send");
+const micBtn = document.getElementById("mic");
+const attachBtn = document.getElementById("attach");
+const fileInput = document.getElementById("fileInput");
+let mediaRecorder, audioChunks = [];
+let isRecording = false;
+let pendingFiles = [];
 
-// Add messages
-function addMessage(content, role="assistant") {
+// ---- Rich message renderer ----
+function addMessage(content, cls, isHTML = false) {
   const div = document.createElement("div");
-  div.className = "msg " + role;
-  div.textContent = content;
-  chat.appendChild(div);
-  chat.scrollTop = chat.scrollHeight;
+  div.className = "msg " + cls;
+  if (isHTML) {
+    div.innerHTML = content;
+  } else {
+    let formatted = content.replace(/(https?:\/\/[^\s]+)/g, (url) => {
+      if (url.match(/\.(jpg|jpeg|png|gif)$/i)) {
+        return `<img src="${url}" style="max-width:200px;border-radius:8px;">`;
+      } else if (url.match(/\.(mp4|mov)$/i)) {
+        return `<video src="${url}" controls style="max-width:200px;border-radius:8px;"></video>`;
+      } else if (url.match(/\.(mp3|wav)$/i)) {
+        return `<audio controls src="${url}"></audio>`;
+      } else {
+        return `<a href="${url}" target="_blank">${url}</a>`;
+      }
+    });
+    div.innerHTML = formatted;
+  }
+  messages.appendChild(div);
+  messages.scrollTop = messages.scrollHeight;
 }
 
-// Send message
+// ---- Send message ----
 function sendMessage() {
-  const msg = input.value.trim();
-  if (!msg) return;
-  addMessage(msg, "user");
-  input.value = "";
+  if (!text.value.trim() && pendingFiles.length === 0) return;
+  addMessage(text.value, "user");
+  const formData = new FormData();
+  formData.append("message", text.value);
+  pendingFiles.forEach(f => formData.append("files", f));
+  text.value = "";
+  document.querySelectorAll(".preview").forEach(p => p.remove());
+  pendingFiles = [];
 
-  fetch("http://localhost:5000/chat", {
-    method:"POST", headers:{ "Content-Type":"application/json" },
-    body:JSON.stringify({ user_id:"demo", message:msg })
-  }).then(r=>r.json()).then(d => addMessage(d.reply, "assistant"));
+  fetch("/chat", { method: "POST", body: formData })
+    .then(r => r.json())
+    .then(d => addMessage(d.reply, "assistant"));
 }
+
+// ---- Enter key sends, Ctrl+Enter = newline ----
+text.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.ctrlKey) {
+    e.preventDefault();
+    sendMessage();
+  } else if (e.key === "Enter" && e.ctrlKey) {
+    text.value += "\n";
+  }
+});
 
 sendBtn.onclick = sendMessage;
-input.addEventListener("keypress", e => { if (e.key==="Enter" && !e.shiftKey){ e.preventDefault(); sendMessage(); }});
 
-// Mic logic
-if ("webkitSpeechRecognition" in window) {
-  recognition = new webkitSpeechRecognition();
-  recognition.continuous = true; recognition.lang="en-US";
-  recognition.onresult = e => input.value += " " + e.results[e.results.length-1][0].transcript;
-}
-micBtn.onclick = () => {
-  if (recognizing) { recognition.stop(); micBtn.textContent="🎤"; recognizing=false; }
-  else { recognition.start(); micBtn.textContent="⏹"; recognizing=true; }
+// ---- Mic ----
+micBtn.onclick = async () => {
+  if (!isRecording) {
+    let stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream);
+    audioChunks = [];
+    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(audioChunks, { type: "audio/webm" });
+      const formData = new FormData();
+      formData.append("audio", blob, "voice.webm");
+      fetch("/voice", { method: "POST", body: formData })
+        .then(r => r.json())
+        .then(d => {
+          text.value = (text.value + " " + d.transcript).trim();
+        });
+    };
+    mediaRecorder.start();
+    micBtn.textContent = "⏹️";
+    isRecording = true;
+  } else {
+    mediaRecorder.stop();
+    micBtn.textContent = "🎤";
+    isRecording = false;
+  }
 };
 
-// File upload preview
-fileUpload.addEventListener("change", e => handleFiles(e.target.files));
-document.addEventListener("paste", e => { if(e.clipboardData.files.length>0) handleFiles(e.clipboardData.files); });
-document.addEventListener("dragover", e=>e.preventDefault());
-document.addEventListener("drop", e=>{e.preventDefault(); if(e.dataTransfer.files.length>0) handleFiles(e.dataTransfer.files);});
+// ---- Attach ----
+attachBtn.onclick = () => fileInput.click();
+fileInput.onchange = () => {
+  [...fileInput.files].forEach(file => {
+    pendingFiles.push(file);
+    const preview = document.createElement("div");
+    preview.className = "preview";
 
-function handleFiles(files){
-  Array.from(files).forEach(file=>{
-    const thumb=document.createElement("div"); thumb.className="file-thumb";
-    if(file.type.startsWith("image/")){
-      const img=document.createElement("img"); img.src=URL.createObjectURL(file); thumb.appendChild(img);
-    }else if(file.type.startsWith("video/")){
-      const vid=document.createElement("video"); vid.src=URL.createObjectURL(file); thumb.appendChild(vid);
-    }else thumb.textContent=file.name;
-    const rm=document.createElement("button"); rm.textContent="✕"; rm.className="remove"; rm.onclick=()=>thumb.remove();
-    thumb.appendChild(rm); filePreview.appendChild(thumb);
-    const fd=new FormData(); fd.append("file",file);
-    fetch("http://localhost:5000/upload",{method:"POST",body:fd});
+    if (file.type.startsWith("image/")) {
+      const img = document.createElement("img");
+      img.src = URL.createObjectURL(file);
+      preview.appendChild(img);
+    } else {
+      preview.textContent = file.name;
+    }
+
+    const removeBtn = document.createElement("button");
+    removeBtn.className = "remove";
+    removeBtn.textContent = "x";
+    removeBtn.onclick = () => {
+      pendingFiles = pendingFiles.filter(f => f !== file);
+      preview.remove();
+    };
+    preview.appendChild(removeBtn);
+    messages.appendChild(preview);
   });
-}
+};
 </script>
 </body>
 </html>
