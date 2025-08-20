@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>AI Chatbot</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f7f7f7; margin: 0; padding: 0; }
+    #chatbox { max-width: 600px; margin: 40px auto; background: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .message { margin: 10px 0; padding: 10px; border-radius: 8px; }
+    .user { background: #d1e7ff; text-align: right; }
+    .bot { background: #f1f1f1; text-align: left; }
+    #controls { display: flex; align-items: center; margin-top: 10px; }
+    #input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 8px; }
+    #send { margin-left: 10px; padding: 10px 15px; }
+    #fileUpload { display: none; }
+    #fileLabel { cursor: pointer; margin-left: 10px; font-size: 20px; }
+    #mic { margin-left: 10px; cursor: pointer; font-size: 20px; }
+  </style>
+</head>
+<body>
+  <div id="chatbox">
+    <div id="messages"></div>
+    <div id="controls">
+      <input id="input" type="text" placeholder="Ask me anything..." />
+      <button id="send">Send</button>
+      <label for="fileUpload" id="fileLabel">📎</label>
+      <input type="file" id="fileUpload" />
+      <span id="mic">🎤</span>
+    </div>
+  </div>
+
+  <script>
+    const input = document.getElementById("input");
+    const sendBtn = document.getElementById("send");
+    const messages = document.getElementById("messages");
+    const micBtn = document.getElementById("mic");
+    const fileUpload = document.getElementById("fileUpload");
+
+    let listening = false;
+    let recognition;
+
+    function addMessage(text, sender) {
+      const div = document.createElement("div");
+      div.className = "message " + sender;
+      div.innerText = text;
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    async function sendMessage() {
+      const text = input.value.trim();
+      if (!text) return;
+      addMessage(text, "user");
+      input.value = "";
+
+      const res = await fetch("http://127.0.0.1:5000/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: "demo", message: text })
+      });
+      const data = await res.json();
+      addMessage(data.reply, "bot");
+    }
+
+    sendBtn.onclick = sendMessage;
+    input.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") {
+        sendMessage();
+      }
+    });
+
+    // File upload
+    fileUpload.onchange = async () => {
+      const file = fileUpload.files[0];
+      if (!file) return;
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("http://127.0.0.1:5000/upload", {
+        method: "POST",
+        body: formData
+      });
+      const data = await res.json();
+      addMessage(data.message, "bot");
+    };
+
+    // Speech recognition
+    micBtn.onclick = () => {
+      if (!('webkitSpeechRecognition' in window)) {
+        alert("Speech recognition not supported.");
+        return;
+      }
+      if (!recognition) {
+        recognition = new webkitSpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = false;
+        recognition.onresult = (event) => {
+          const transcript = event.results[event.results.length - 1][0].transcript;
+          input.value += " " + transcript;
+        };
+      }
+      if (!listening) {
+        recognition.start();
+        listening = true;
+        micBtn.style.color = "red";
+      } else {
+        recognition.stop();
+        listening = false;
+        micBtn.style.color = "black";
+      }
+    };
+  </script>
+</body>
+</html>
