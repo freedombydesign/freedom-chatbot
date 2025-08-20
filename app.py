@@ -1,44 +1,103 @@
-from flask import Flask, request, jsonify
-conversations[user_id] = [
-{"role": "system", "content": (
-"You are a warm, conversational AI assistant. "
-"Speak naturally, casually, and human-like. "
-"Balance being concise with being engaging."
-)}
-]
+<!DOCTYPE html>
+<div id="chatbox">
+<div id="messages"></div>
+<div id="inputArea">
+<input type="text" id="message" placeholder="Ask me anything..." />
+<button id="micBtn">🎤</button>
+<label for="fileInput" id="fileBtn">📎</label>
+<input type="file" id="fileInput" multiple />
+<button id="sendBtn">➤</button>
+</div>
+</div>
 
 
-# Add user message
-conversations[user_id].append({"role": "user", "content": user_message})
+<script>
+const messagesDiv = document.getElementById("messages");
+const input = document.getElementById("message");
+const sendBtn = document.getElementById("sendBtn");
+const micBtn = document.getElementById("micBtn");
+const fileInput = document.getElementById("fileInput");
 
 
-# Inject web search if needed
-if any(x in user_message.lower() for x in ["today", "latest", "current", "news", "president"]):
-search_info = web_search(user_message)
-if search_info:
-conversations[user_id].append({"role": "system", "content": f"Web search says: {search_info}"})
+let recognition;
+let isRecording = false;
 
 
-# Call OpenAI
-reply = openai.ChatCompletion.create(
-model="gpt-4o-mini",
-messages=conversations[user_id]
-).choices[0].message["content"]
+// --- Display Messages ---
+function addMessage(text, sender) {
+const div = document.createElement("div");
+div.className = `msg ${sender}`;
+div.textContent = text;
+messagesDiv.appendChild(div);
+messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
 
 
-conversations[user_id].append({"role": "assistant", "content": reply})
+// --- Send Message ---
+async function sendMessage() {
+const text = input.value.trim();
+if (!text) return;
+addMessage(text, "user");
+input.value = "";
 
 
-return jsonify({"reply": reply})
+const res = await fetch("http://127.0.0.1:5000/chat", {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({ user_id: "demo", message: text })
+});
+const data = await res.json();
+addMessage(data.response, "assistant");
+}
 
 
-# --- Voice Transcription ---
-@app.route("/voice", methods=["POST"])
-def voice():
-audio = request.files["audio"]
-transcript = openai.Audio.transcriptions.create(model="gpt-4o-transcribe", file=audio)
-return jsonify({"transcript": transcript.text})
+sendBtn.addEventListener("click", sendMessage);
+input.addEventListener("keypress", e => { if (e.key === "Enter") sendMessage(); });
 
 
-if __name__ == "__main__":
-app.run(debug=True)
+// --- File Upload ---
+fileInput.addEventListener("change", async () => {
+for (const file of fileInput.files) {
+const formData = new FormData();
+formData.append("file", file);
+const res = await fetch("http://127.0.0.1:5000/upload", { method: "POST", body: formData });
+const data = await res.json();
+if (data.success) addMessage(`Uploaded: ${data.filename}`, "assistant");
+}
+});
+
+
+// --- Voice Recognition ---
+if ('webkitSpeechRecognition' in window) {
+recognition = new webkitSpeechRecognition();
+recognition.continuous = true;
+recognition.interimResults = true;
+
+
+recognition.onresult = (event) => {
+let transcript = "";
+for (let i = event.resultIndex; i < event.results.length; i++) {
+transcript += event.results[i][0].transcript;
+}
+input.value = transcript;
+};
+
+
+recognition.onend = () => { isRecording = false; micBtn.textContent = "🎤"; };
+}
+
+
+micBtn.addEventListener("click", () => {
+if (isRecording) {
+recognition.stop();
+isRecording = false;
+micBtn.textContent = "🎤";
+} else {
+recognition.start();
+isRecording = true;
+micBtn.textContent = "⏹";
+}
+});
+</script>
+</body>
+</html>
