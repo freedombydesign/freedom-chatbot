@@ -1,149 +1,57 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>AI Assistant</title>
-  <style>
-    body { font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }
-    #messages { flex: 1; overflow-y: auto; padding: 1rem; background: #f4f4f4; }
-    .msg { margin: .5rem 0; padding: .5rem 1rem; border-radius: 12px; max-width: 70%; }
-    .user { background: #0084ff; color: white; align-self: flex-end; }
-    .assistant { background: #e5e5ea; color: black; align-self: flex-start; }
-    #input-bar { display: flex; padding: .5rem; background: white; }
-    #text { flex: 1; padding: .5rem; border-radius: 20px; border: 1px solid #ccc; }
-    #send, #mic, #attach { margin-left: .5rem; }
-    .preview { display: inline-block; margin: 5px; position: relative; }
-    .preview img, .preview video, .preview audio { max-width: 100px; border-radius: 8px; }
-    .remove { position: absolute; top: -6px; right: -6px; background: red; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; }
-  </style>
-</head>
-<body>
-  <div id="messages"></div>
-  <div id="input-bar">
-    <input id="text" placeholder="Ask me anything…" />
-    <input type="file" id="fileInput" multiple style="display:none" />
-    <button id="attach">📎</button>
-    <button id="mic">🎤</button>
-    <button id="send">➤</button>
-  </div>
+<div id="chatbar">
+<input id="text" placeholder="Ask me anything...">
+<button id="sendBtn">➤</button>
+<button id="micBtn">🎤</button>
+<button id="attachBtn">📎</button>
+<input type="file" id="fileInput" style="display:none" />
+</div>
+<div id="messages"></div>
+
 
 <script>
-const messages = document.getElementById("messages");
-const text = document.getElementById("text");
-const sendBtn = document.getElementById("send");
-const micBtn = document.getElementById("mic");
-const attachBtn = document.getElementById("attach");
-const fileInput = document.getElementById("fileInput");
-let mediaRecorder, audioChunks = [];
-let isRecording = false;
-let pendingFiles = [];
+let isRecording = false, mediaRecorder, pendingFiles = [];
 
-// ---- Rich message renderer ----
-function addMessage(content, cls, isHTML = false) {
-  const div = document.createElement("div");
-  div.className = "msg " + cls;
-  if (isHTML) {
-    div.innerHTML = content;
-  } else {
-    let formatted = content.replace(/(https?:\/\/[^\s]+)/g, (url) => {
-      if (url.match(/\.(jpg|jpeg|png|gif)$/i)) {
-        return `<img src="${url}" style="max-width:200px;border-radius:8px;">`;
-      } else if (url.match(/\.(mp4|mov)$/i)) {
-        return `<video src="${url}" controls style="max-width:200px;border-radius:8px;"></video>`;
-      } else if (url.match(/\.(mp3|wav)$/i)) {
-        return `<audio controls src="${url}"></audio>`;
-      } else {
-        return `<a href="${url}" target="_blank">${url}</a>`;
-      }
-    });
-    div.innerHTML = formatted;
-  }
-  messages.appendChild(div);
-  messages.scrollTop = messages.scrollHeight;
+
+// Send message
+function sendMessage(){
+if(!text.value.trim() && pendingFiles.length===0) return;
+const formData = new FormData();
+formData.append("message", text.value);
+pendingFiles.forEach(f=>formData.append("files",f));
+fetch("/chat", { method:"POST", body: formData })
+.then(r=>r.json()).then(d=>addMessage(d.reply,"assistant"));
+text.value=""; pendingFiles=[];
 }
 
-// ---- Send message ----
-function sendMessage() {
-  if (!text.value.trim() && pendingFiles.length === 0) return;
-  addMessage(text.value, "user");
-  const formData = new FormData();
-  formData.append("message", text.value);
-  pendingFiles.forEach(f => formData.append("files", f));
-  text.value = "";
-  document.querySelectorAll(".preview").forEach(p => p.remove());
-  pendingFiles = [];
 
-  fetch("/chat", { method: "POST", body: formData })
-    .then(r => r.json())
-    .then(d => addMessage(d.reply, "assistant"));
+// Enter = send
+text.addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); sendMessage(); }});
+
+
+// Mic toggle
+micBtn.onclick = async ()=>{
+if(!isRecording){
+const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+mediaRecorder = new MediaRecorder(stream);
+mediaRecorder.start();
+micBtn.textContent="⏹"; isRecording=true;
+} else {
+mediaRecorder.stop();
+micBtn.textContent="🎤"; isRecording=false;
 }
-
-// ---- Enter key sends, Ctrl+Enter = newline ----
-text.addEventListener("keydown", e => {
-  if (e.key === "Enter" && !e.ctrlKey) {
-    e.preventDefault();
-    sendMessage();
-  } else if (e.key === "Enter" && e.ctrlKey) {
-    text.value += "\n";
-  }
-});
-
-sendBtn.onclick = sendMessage;
-
-// ---- Mic ----
-micBtn.onclick = async () => {
-  if (!isRecording) {
-    let stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(stream);
-    audioChunks = [];
-    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-    mediaRecorder.onstop = () => {
-      const blob = new Blob(audioChunks, { type: "audio/webm" });
-      const formData = new FormData();
-      formData.append("audio", blob, "voice.webm");
-      fetch("/voice", { method: "POST", body: formData })
-        .then(r => r.json())
-        .then(d => {
-          text.value = (text.value + " " + d.transcript).trim();
-        });
-    };
-    mediaRecorder.start();
-    micBtn.textContent = "⏹️";
-    isRecording = true;
-  } else {
-    mediaRecorder.stop();
-    micBtn.textContent = "🎤";
-    isRecording = false;
-  }
 };
 
-// ---- Attach ----
-attachBtn.onclick = () => fileInput.click();
-fileInput.onchange = () => {
-  [...fileInput.files].forEach(file => {
-    pendingFiles.push(file);
-    const preview = document.createElement("div");
-    preview.className = "preview";
 
-    if (file.type.startsWith("image/")) {
-      const img = document.createElement("img");
-      img.src = URL.createObjectURL(file);
-      preview.appendChild(img);
-    } else {
-      preview.textContent = file.name;
-    }
-
-    const removeBtn = document.createElement("button");
-    removeBtn.className = "remove";
-    removeBtn.textContent = "x";
-    removeBtn.onclick = () => {
-      pendingFiles = pendingFiles.filter(f => f !== file);
-      preview.remove();
-    };
-    preview.appendChild(removeBtn);
-    messages.appendChild(preview);
-  });
+// Attach button
+attachBtn.onclick = ()=> fileInput.click();
+fileInput.onchange = ()=>{
+[...fileInput.files].forEach(file=>{
+pendingFiles.push(file);
+let preview=document.createElement("div");
+preview.textContent=file.name+" ❌";
+preview.onclick=()=>{ pendingFiles=pendingFiles.filter(f=>f!==file); preview.remove(); };
+messages.appendChild(preview);
+});
 };
 </script>
-</body>
-</html>
+```
