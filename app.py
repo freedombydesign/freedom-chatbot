@@ -1,46 +1,45 @@
 from flask import Flask, request, jsonify
-import os
 from openai import OpenAI
-
-client = OpenAI()
-
+import os
+from memory import save_user, get_user, save_message, get_messages
 
 app = Flask(__name__)
 
-# Make sure you set your API key in Render's environment settings
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Initialize OpenAI client
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-@app.route("/")
-def home():
-    return "<h1>Chatbot Backend Running ✅</h1><p>Send POST requests to /chat</p>", 200
-
-@app.route("/health")
-def health():
-    return "ok", 200
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    try:
-        data = request.get_json()
-        user_message = data.get("message")
+    data = request.json
+    user_id = data.get("user_id", "default_user")
+    message = data.get("message")
 
-        if not user_message:
-            return jsonify({"error": "No message provided"}), 400
+    # Ensure user exists in Supabase
+    save_user(user_id)
 
-        # Call OpenAI API (ChatGPT-like behavior)
-     response = client.chat.completions.create(
-    model="gpt-3.5-turbo",
-    messages=[{"role": "user", "content": user_message}]
-)
+    # Save the incoming user message
+    save_message(user_id, "user", message)
 
+    # Retrieve last 10 messages from history
+    history = get_messages(user_id)
 
+    # Format history into OpenAI-compatible messages
+    messages = [{"role": msg["role"], "content": msg["content"]} for msg in history]
 
-        reply = response["choices"][0]["message"]["content"]
-        return jsonify({"reply": reply})
+    # Generate AI response
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=messages
+    )
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    ai_message = response.choices[0].message.content
+
+    # Save AI response
+    save_message(user_id, "assistant", ai_message)
+
+    return jsonify({"reply": ai_message})
+
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))  # Render will provide PORT
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=5000)
