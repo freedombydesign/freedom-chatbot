@@ -33,7 +33,7 @@ def chat():
     messages=[{"role": "user", "content": user_message}]
 )
 
-        )
+
 
         reply = response["choices"][0]["message"]["content"]
         return jsonify({"reply": reply})
