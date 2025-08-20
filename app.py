@@ -14,13 +14,13 @@ def home():
 @app.route("/chat", methods=["POST"])
 def chat():
     data = request.json
-    user_id = data.get("user_id", "default")  # identify user/session
+    user_id = data.get("user_id", "default")
     user_message = data.get("message")
 
     if not user_message:
         return jsonify({"error": "Message is required"}), 400
 
-    # Initialize new conversation if needed
+    # Initialize conversation if new
     if user_id not in conversations:
         conversations[user_id] = [
             {
@@ -38,21 +38,17 @@ def chat():
             }
         ]
 
-    # Add user message
     conversations[user_id].append({"role": "user", "content": user_message})
 
     try:
-        # Generate reply
         completion = client.chat.completions.create(
-            model="gpt-4o-mini",   # fast + cost effective; change to gpt-4-turbo if you want
+            model="gpt-4o-mini",
             messages=conversations[user_id],
             max_tokens=500,
             temperature=0.85
         )
 
         reply = completion.choices[0].message.content
-
-        # Add assistant reply to history
         conversations[user_id].append({"role": "assistant", "content": reply})
 
         return jsonify({"reply": reply})
