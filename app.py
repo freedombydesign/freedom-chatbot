@@ -1,93 +1,99 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import os, requests
+from werkzeug.utils import secure_filename
 import openai
-import requests
-import os
 
 app = Flask(__name__)
 CORS(app)
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Config
+UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+ALLOWED_EXTS = {"pdf", "doc", "docx", "txt", "jpg", "jpeg", "png", "gif", "mp4", "mp3", "wav"}
+conversations = {}
 
-# 🔹 Hybrid Routing Logic
-def route_message(message: str) -> str:
-    """Route message to GPT-4-mini or GPT-4.1 based on complexity"""
-    if len(message) < 15 and not any(
-        word in message.lower() for word in ["anxious", "therapy", "help", "struggling", "practice"]
-    ):
-        return "gpt-4.1-mini"
+openai.api_key = os.getenv("OPENAI_API_KEY")
+BING_KEY = os.getenv("BING_SEARCH_KEY")
+
+def allowed_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTS
+
+# System prompt
+SYSTEM_PROMPT = {
+    "role": "system",
+    "content": (
+        "You are a warm, conversational AI assistant. "
+        "Speak in a natural, human-like way, using casual, friendly expressions. "
+        "Understand nuance, tone, and cultural context. "
+        "Respond seamlessly in any language the user uses. "
+        "Keep replies empathetic and approachable. "
+        "Do not remind people you are an AI unless asked."
+    )
+}
+
+# ---- ROUTER ----
+def route_model(message):
+    keywords = ["anxious", "therapy", "help", "practice", "struggling", "president", "today", "news"]
+    if len(message) < 15 and not any(k in message.lower() for k in keywords):
+        return "gpt-4o-mini"
     return "gpt-4.1"
 
-# 🔹 Web Search Fallback
-def web_search(query: str) -> str:
-    """Quick web search using DuckDuckGo API"""
-    try:
-        resp = requests.get(
-            "https://api.duckduckgo.com/",
-            params={"q": query, "format": "json"},
-            timeout=5
-        )
-        data = resp.json()
-        if "AbstractText" in data and data["AbstractText"]:
-            return data["AbstractText"]
-        elif "RelatedTopics" in data and len(data["RelatedTopics"]) > 0:
-            return data["RelatedTopics"][0].get("Text", "No summary available.")
-        return "Sorry, I couldn’t find anything on that."
-    except Exception as e:
-        return f"Search error: {str(e)}"
-
+# ---- CHAT ----
 @app.route("/chat", methods=["POST"])
 def chat():
-    user_msg = request.json.get("message", "")
-    files = request.files.getlist("files")
+    data = request.json
+    user_id = data.get("user_id", "default")
+    msg = data.get("message", "")
 
-    # Handle uploads (basic)
-    file_summaries = []
-    for f in files:
-        file_summaries.append(f"📎 {f.filename} uploaded (size: {len(f.read())} bytes)")
-        f.seek(0)
+    if user_id not in conversations:
+        conversations[user_id] = [SYSTEM_PROMPT]
 
-    # Special case → Web search if question looks factual/current
-    if any(keyword in user_msg.lower() for keyword in ["today", "date", "time", "news", "weather"]):
-        search_result = web_search(user_msg)
-        return jsonify({"reply": f"🌐 {search_result}"})
+    conversations[user_id].append({"role": "user", "content": msg})
 
-    # Hybrid model routing
-    model = route_message(user_msg)
+    # Live search hook
+    if any(k in msg.lower() for k in ["who is", "today", "date", "current", "latest", "president"]):
+        try:
+            r = requests.get(
+                "https://api.bing.microsoft.com/v7.0/search",
+                headers={"Ocp-Apim-Subscription-Key": BING_KEY},
+                params={"q": msg, "mkt": "en-US"}
+            )
+            if r.status_code == 200:
+                webdata = r.json()
+                if "webPages" in webdata and "value" in webdata["webPages"]:
+                    snippet = webdata["webPages"]["value"][0]["snippet"]
+                    conversations[user_id].append({"role": "system", "content": f"Web search result: {snippet}"})
+        except Exception as e:
+            print("Search error:", e)
 
-    completion = openai.ChatCompletion.create(
+    # Pick model
+    model = route_model(msg)
+
+    resp = openai.chat.completions.create(
         model=model,
-        messages=[
-            {
-                "role": "system",
-                "content": "You are a warm, conversational AI assistant. Be supportive, natural, and nuanced. Understand all languages."
-            },
-            {"role": "user", "content": user_msg},
-        ]
+        messages=conversations[user_id],
+        temperature=0.7,
     )
 
-    reply = completion["choices"][0]["message"]["content"]
-
-    if file_summaries:
-        reply += "\n\n" + "\n".join(file_summaries)
-
+    reply = resp.choices[0].message.content
+    conversations[user_id].append({"role": "assistant", "content": reply})
     return jsonify({"reply": reply})
 
-    # Initialize conversation if new
-    if user_id not in conversations:
-        conversations[user_id] = [
-            {
-                "role": "system",
-                "content": (
-                    "You are a warm, conversational AI assistant. "
-                    "Speak in a natural, human-like way, using casual, friendly expressions "
-                    "when appropriate (like 'Hey, how’s it going?' or 'Got it, let’s fix that'). "
-                    "You understand nuance, tone, and cultural context. "
-                    "You can seamlessly respond in any language the user chooses. "
-                    "Keep replies clear, empathetic, and approachable. "
-                    "Do not remind people you are an AI unless they directly ask. "
-                    "Balance being concise with being engaging."
-                )
+# ---- FILE UPLOAD ----
+@app.route("/upload", methods=["POST"])
+def upload():
+    if "file" not in request.files:
+        return jsonify({"error": "No file"}), 400
+    file = request.files["file"]
+    if file.filename == "" or not allowed_file(file.filename):
+        return jsonify({"error": "Invalid file"}), 400
+
+    path = os.path.join(UPLOAD_FOLDER, secure_filename(file.filename))
+    file.save(path)
+
+    # Simple placeholder: In production, call OCR / Whisper / Vision here
+    return jsonify({"status": "uploaded", "filename": file.filename})
 
 if __name__ == "__main__":
     app.run(debug=True)
