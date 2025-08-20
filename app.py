@@ -1,54 +1,38 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import openai
 import requests
-import datetime
+import os
 
 app = Flask(__name__)
 CORS(app)
 
-openai.api_key = "YOUR_OPENAI_API_KEY"
-
+# Store conversation history
 conversations = {}
 
-# --------------------------
-# HELPER: Route message
-# --------------------------
-def route_message(message):
-    keywords = ["anxious", "help", "therapy", "practice", "struggling", "explain"]
-    if len(message) < 15 and not any(word in message.lower() for word in keywords):
-        return "gpt-4o-mini"
-    return "gpt-4.1"
+# Environment variables (make sure to set these in Render or locally)
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# --------------------------
-# HELPER: Web Search
-# --------------------------
-def perform_web_search(query):
-    if "date" in query.lower() or "time" in query.lower():
-        return f"The current date and time is {datetime.datetime.now().strftime('%A, %B %d, %Y %I:%M %p')}."
-    
+# Real-time search using web API
+def web_search(query):
     try:
-        res = requests.get(
-            "https://api.duckduckgo.com/",
-            params={"q": query, "format": "json", "no_redirect": 1, "no_html": 1},
-            timeout=5
+        response = requests.get(
+            "https://api.duckduckgo.com/",  # Simple, free search API
+            params={"q": query, "format": "json"}
         )
-        data = res.json()
-        if data.get("AbstractText"):
+        data = response.json()
+        if "AbstractText" in data and data["AbstractText"]:
             return data["AbstractText"]
-        elif data.get("RelatedTopics"):
-            return data["RelatedTopics"][0].get("Text", "I couldn’t find anything useful.")
-        return "I couldn’t find any good info on that."
-    except Exception:
-        return "Sorry, I had trouble reaching the web."
+        elif "RelatedTopics" in data and data["RelatedTopics"]:
+            return data["RelatedTopics"][0].get("Text", "I couldn’t find anything relevant.")
+        return "I couldn’t find anything relevant."
+    except Exception as e:
+        return f"Search error: {str(e)}"
 
-# --------------------------
-# ROUTE: Chat
-# --------------------------
 @app.route("/chat", methods=["POST"])
 def chat():
-    user_id = request.json.get("user_id", "default")
-    message = request.json.get("message", "")
+    data = request.json
+    user_id = data.get("user_id", "default")
+    user_message = data.get("message", "")
 
     # Initialize conversation if new
     if user_id not in conversations:
@@ -58,39 +42,31 @@ def chat():
                 "content": (
                     "You are a warm, conversational AI assistant. "
                     "Speak in a natural, human-like way, using casual, friendly expressions "
-                    "when appropriate. You understand nuance, tone, and cultural context. "
+                    "when appropriate (like 'Hey, how’s it going?' or 'Got it, let’s fix that'). "
+                    "You understand nuance, tone, and cultural context. "
+                    "You can seamlessly respond in any language the user chooses. "
                     "Keep replies clear, empathetic, and approachable. "
-                    "Do not remind people you are an AI unless asked directly. "
+                    "Do not remind people you are an AI unless they directly ask. "
                     "Balance being concise with being engaging."
-                )
+                ),
             }
         ]
 
-    # Append user message
-    conversations[user_id].append({"role": "user", "content": message})
+    # Add user message
+    conversations[user_id].append({"role": "user", "content": user_message})
 
-    # Try web search if needed
-    if "who is the president" in message.lower() or "current" in message.lower():
-        web_answer = perform_web_search(message)
-        conversations[user_id].append({"role": "assistant", "content": web_answer})
-        return jsonify({"reply": web_answer})
+    # Web search hook for questions needing current info
+    if any(word in user_message.lower() for word in ["date", "time", "president", "today"]):
+        search_result = web_search(user_message)
+        conversations[user_id].append({"role": "assistant", "content": search_result})
+        return jsonify({"reply": search_result})
 
-    # Decide which model to use
-    model = route_message(message)
-
-    # Get AI response
-    response = openai.chat.completions.create(
-        model=model,
-        messages=conversations[user_id],
-    )
-    reply = response.choices[0].message["content"]
-
+    # Fallback static reply (replace with OpenAI API if desired)
+    reply = f"You said: {user_message}"
     conversations[user_id].append({"role": "assistant", "content": reply})
+
     return jsonify({"reply": reply})
 
-# --------------------------
-# ROUTE: File Upload
-# --------------------------
 @app.route("/upload", methods=["POST"])
 def upload():
     if "file" not in request.files:
@@ -98,8 +74,12 @@ def upload():
 
     file = request.files["file"]
     filename = file.filename
-    # TODO: integrate doc/image/video analysis here
-    return jsonify({"message": f"Received {filename}, but file analysis not fully wired yet."})
+    # Save file temporarily (extend with video/audio/doc processing)
+    filepath = os.path.join("uploads", filename)
+    os.makedirs("uploads", exist_ok=True)
+    file.save(filepath)
+
+    return jsonify({"message": f"File {filename} uploaded successfully."})
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000)
