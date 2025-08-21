@@ -30,7 +30,7 @@ app.post("/chat", async (req, res) => {
 
     // 2. Save both user message and bot response in ONE insert to conversations table
     const { data, error } = await supabase
-      .from("conversations")  // Changed from "memory" to "conversations"
+      .from("Conversations")  // Changed from "memory" to "conversations"
       .insert([{ 
         user_id: user_id, 
         message: message,     // User's message
