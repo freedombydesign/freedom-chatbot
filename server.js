@@ -15,16 +15,18 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
-// Random conversation starters for variety
+// More diverse conversation starters
 const CONVERSATION_STARTERS = [
-  "Ah, I see what's happening here.",
-  "That's a classic founder bottleneck!",
-  "Okay, let me think about this...",
-  "Hmm, interesting situation.",
-  "I've seen this pattern before.",
-  "That sounds frustrating!",
-  "Yep, totally get it.",
-  "Oh, this is solvable for sure."
+  "Oof, 3 hours on emails? That's brutal.",
+  "Email chaos is the worst kind of time drain.",
+  "Been there! Email overwhelm is real.",
+  "That's way too much time in your inbox.",
+  "Classic email trap - super fixable though.",
+  "Yikes, that's almost half a workday!",
+  "Email prison is no joke.",
+  "Drowning in emails? Let's fix this.",
+  "Three hours?! We need to cut that in half.",
+  "Email overload is a productivity killer."
 ];
 
 // Random response types for dynamics
@@ -34,27 +36,28 @@ const RESPONSE_TYPES = [
   "mixed" // Combine insight with questions
 ];
 
-// Generate dynamic system prompt with randomness
+// Generate dynamic system prompt with more randomness
 function generateSystemPrompt() {
   const starter = CONVERSATION_STARTERS[Math.floor(Math.random() * CONVERSATION_STARTERS.length)];
   const responseType = RESPONSE_TYPES[Math.floor(Math.random() * RESPONSE_TYPES.length)];
-  const wordLimit = Math.floor(Math.random() * 40) + 40; // 40-80 words
+  const wordLimit = Math.floor(Math.random() * 30) + 35; // 35-65 words for tighter responses
+  const timestamp = Date.now(); // Add timestamp to ensure uniqueness
   
   let behaviorInstructions = "";
   
   switch(responseType) {
     case "diagnostic":
-      behaviorInstructions = "Focus on asking 1-2 smart questions to understand their situation better.";
+      behaviorInstructions = "Ask 1-2 pointed questions to dig into the real problem.";
       break;
     case "insight":
-      behaviorInstructions = "Give a quick insight or observation, then ask what they want to tackle.";
+      behaviorInstructions = "Give a quick reality check or observation, then see what they think.";
       break;
     case "mixed":
-      behaviorInstructions = "Share a brief insight AND ask a follow-up question.";
+      behaviorInstructions = "Drop a quick insight AND ask what's really eating up their time.";
       break;
   }
   
-  return `You're a business strategist helping founders remove bottlenecks. Start your response with something like "${starter}" but make it natural. ${behaviorInstructions} Talk like a smart friend - casual, direct, no corporate speak. Keep it under ${wordLimit} words. Vary your style each time. Sometimes be more analytical, sometimes more encouraging, sometimes more direct.`;
+  return `${timestamp}: You're a no-BS business strategist. React with: "${starter}" ${behaviorInstructions} Be conversational and direct. Under ${wordLimit} words. Don't sound like every other business coach - be genuine and varied in your approach.`;
 }
 
 app.post("/chat", async (req, res) => {
