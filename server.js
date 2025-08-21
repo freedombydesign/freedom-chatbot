@@ -20,31 +20,40 @@ app.post("/chat", async (req, res) => {
   try {
     const { user_id, message } = req.body;
 
-    // 1. Save user message
-    await supabase
-      .from("memory")
-      .insert([{ user_id, message }]);
-
-    // 2. Get model reply
+    // 1. Get model reply first
     const completion = await openai.chat.completions.create({
-      model: "gpt-4.1-mini",   // ✅ Cheapest GPT-4.1 option
+      model: "gpt-4o-mini",   // Fixed model name - should be gpt-4o-mini, not gpt-4.1-mini
       messages: [{ role: "user", content: message }]
     });
-
+    
     const botReply = completion.choices[0].message.content;
 
-    // 3. Save bot reply
-    await supabase
-      .from("memory")
-      .insert([{ user_id, response: botReply }]);
+    // 2. Save both user message and bot response in ONE insert to conversations table
+    const { data, error } = await supabase
+      .from("conversations")  // Changed from "memory" to "conversations"
+      .insert([{ 
+        user_id: user_id, 
+        message: message,     // User's message
+        response: botReply    // AI's response
+      }]);
 
-    // 4. Return reply
+    if (error) {
+      console.error("Supabase error:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    // 3. Return reply
     res.json({ reply: botReply });
 
   } catch (err) {
     console.error("Error in /chat route:", err);
     res.status(500).json({ error: err.message });
   }
+});
+
+// ✅ Health check route
+app.get("/", (req, res) => {
+  res.json({ status: "AI Strategist API is running!" });
 });
 
 // ✅ Start server
