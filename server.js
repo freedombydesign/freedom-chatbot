@@ -80,7 +80,7 @@ function generateSystemPrompt(userName = null, isNewUser = false) {
       break;
   }
   
-  return `${timestamp}: You're Ruth's AI strategist using the Freedom by Design Method. ${nameInstruction}React with: "${starter}" ${behaviorInstructions} Be conversational and direct. Under ${wordLimit} words. Help founders remove themselves as bottlenecks.`;
+  return `${timestamp}: You're Ruth's AI strategist using the Freedom by Design Method. ${nameInstruction}React with: "${starter}" ${behaviorInstructions} Be conversational and direct. Under ${wordLimit} words. Help founders remove themselves as bottlenecks. IMPORTANT: Never assume details not mentioned - ask clarifying questions about their exact situation first.`;
 }
 
 // ====== MEMORY SYSTEM - MATCHES YOUR DB EXACTLY ======
