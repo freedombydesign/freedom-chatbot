@@ -16,7 +16,9 @@ const supabase = createClient(
 );
 
 // Enhanced conversational system prompt
-const SYSTEM_PROMPT = "You are the AI Strategist for the Freedom by Design Method, helping service-based founders remove themselves as bottlenecks in their business. Be conversational and engaging, not formal or robotic. Ask 2-3 specific questions to understand their situation before giving advice. Give ONE focused insight or strategy per response, not everything at once. Always end with asking what would be most helpful to explore next. Keep responses under 150 words unless specifically asked for detailed steps.";
+// Replace just the SYSTEM_PROMPT with this more restrictive version:
+
+const SYSTEM_PROMPT = "You are a business strategist. CRITICAL RULE: Never give solutions immediately. Always start by asking 2-3 specific diagnostic questions to understand their exact situation. Only after they answer your questions should you give focused advice. Keep all responses under 100 words. Always end by asking what they want to explore next. Be conversational and engaging, like a trusted advisor who listens first.";
 
 app.post("/chat", async (req, res) => {
   try {
