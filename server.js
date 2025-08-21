@@ -36,14 +36,27 @@ const RESPONSE_TYPES = [
   "mixed" // Combine insight with questions
 ];
 
+// Extract name from conversation history
+function extractNameFromHistory(history) {
+  for (let conv of history) {
+    // Look for patterns like "I'm John" or "My name is Sarah"
+    const nameMatch = conv.message.match(/(?:i'm|i am|my name is|call me)\s+([a-zA-Z]+)/i);
+    if (nameMatch) {
+      return nameMatch[1];
+    }
+  }
+  return null;
+}
+
 // Generate dynamic system prompt with more randomness
-function generateSystemPrompt() {
+function generateSystemPrompt(userName = null) {
   const starter = CONVERSATION_STARTERS[Math.floor(Math.random() * CONVERSATION_STARTERS.length)];
   const responseType = RESPONSE_TYPES[Math.floor(Math.random() * RESPONSE_TYPES.length)];
   const wordLimit = Math.floor(Math.random() * 30) + 35; // 35-65 words for tighter responses
   const timestamp = Date.now(); // Add timestamp to ensure uniqueness
   
   let behaviorInstructions = "";
+  let nameInstruction = userName ? `Use their name "${userName}" occasionally in conversation to be personal. ` : "";
   
   switch(responseType) {
     case "diagnostic":
@@ -57,7 +70,7 @@ function generateSystemPrompt() {
       break;
   }
   
-  return `${timestamp}: You're a no-BS business strategist. React with: "${starter}" ${behaviorInstructions} Be conversational and direct. Under ${wordLimit} words. Don't sound like every other business coach - be genuine and varied in your approach.`;
+  return `${timestamp}: You're a no-BS business strategist. ${nameInstruction}React with: "${starter}" ${behaviorInstructions} Be conversational and direct. Under ${wordLimit} words. Don't sound like every other business coach - be genuine and varied in your approach.`;
 }
 
 app.post("/chat", async (req, res) => {
@@ -72,8 +85,20 @@ app.post("/chat", async (req, res) => {
       .order("created_at", { ascending: true })
       .limit(10);
 
+    // Check if this is a new user (no conversation history)
+    const isNewUser = !history || history.length === 0;
+
     // Generate a fresh, random system prompt for each conversation
-    const dynamicPrompt = generateSystemPrompt();
+    let dynamicPrompt;
+    
+    if (isNewUser) {
+      // Special prompt for new users to get their name
+      dynamicPrompt = "You're a friendly business strategist. This is your first conversation with this founder. Start by introducing yourself briefly and asking for their name so you can personalize the conversation. Be warm and welcoming. Keep it under 50 words.";
+    } else {
+      // Check if we have their name from previous conversations
+      const userName = extractNameFromHistory(history);
+      dynamicPrompt = generateSystemPrompt(userName);
+    }
 
     // Build conversation context with random temperature
     const randomTemperature = 0.6 + (Math.random() * 0.4); // 0.6 to 1.0 for variety
