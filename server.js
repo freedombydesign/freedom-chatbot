@@ -92,8 +92,8 @@ app.post("/chat", async (req, res) => {
     let dynamicPrompt;
     
     if (isNewUser) {
-      // Special prompt for new users to get their name
-      dynamicPrompt = "You're a friendly business strategist. This is your first conversation with this founder. Start by introducing yourself briefly and asking for their name so you can personalize the conversation. Be warm and welcoming. Keep it under 50 words.";
+      // Special prompt for new users - Ruth's branded intro
+      dynamicPrompt = "You're Ruth's AI strategist built on the Freedom by Design Method. Introduce yourself with exactly: 'Hi there! I'm your AI strategist, built on the Freedom by Design Method. I'll guide you step-by-step so you can focus on growth while your business runs with less of you. Let's start simple—what's your name?' Be warm and welcoming.";
     } else {
       // Check if we have their name from previous conversations
       const userName = extractNameFromHistory(history);
