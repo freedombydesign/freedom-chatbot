@@ -1,4 +1,4 @@
-// Enhanced server.js with conversational AI prompt
+// Enhanced server.js with randomness and personality
 import express from "express";
 import bodyParser from "body-parser";
 import cors from "cors";
@@ -15,16 +15,53 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
-// Enhanced conversational system prompt
-// Replace just the SYSTEM_PROMPT with this more restrictive version:
+// Random conversation starters for variety
+const CONVERSATION_STARTERS = [
+  "Ah, I see what's happening here.",
+  "That's a classic founder bottleneck!",
+  "Okay, let me think about this...",
+  "Hmm, interesting situation.",
+  "I've seen this pattern before.",
+  "That sounds frustrating!",
+  "Yep, totally get it.",
+  "Oh, this is solvable for sure."
+];
 
-const SYSTEM_PROMPT = "You are a business strategist. CRITICAL RULE: Never give solutions immediately. Always start by asking 2-3 specific diagnostic questions to understand their exact situation. Only after they answer your questions should you give focused advice. Keep all responses under 100 words. Always end by asking what they want to explore next. Be conversational and engaging, like a trusted advisor who listens first.";
+// Random response types for dynamics
+const RESPONSE_TYPES = [
+  "diagnostic", // Ask questions to understand better
+  "insight", // Give a quick observation
+  "mixed" // Combine insight with questions
+];
+
+// Generate dynamic system prompt with randomness
+function generateSystemPrompt() {
+  const starter = CONVERSATION_STARTERS[Math.floor(Math.random() * CONVERSATION_STARTERS.length)];
+  const responseType = RESPONSE_TYPES[Math.floor(Math.random() * RESPONSE_TYPES.length)];
+  const wordLimit = Math.floor(Math.random() * 40) + 40; // 40-80 words
+  
+  let behaviorInstructions = "";
+  
+  switch(responseType) {
+    case "diagnostic":
+      behaviorInstructions = "Focus on asking 1-2 smart questions to understand their situation better.";
+      break;
+    case "insight":
+      behaviorInstructions = "Give a quick insight or observation, then ask what they want to tackle.";
+      break;
+    case "mixed":
+      behaviorInstructions = "Share a brief insight AND ask a follow-up question.";
+      break;
+  }
+  
+  return `You're a business strategist helping founders remove bottlenecks. Start your response with something like "${starter}" but make it natural. ${behaviorInstructions} Talk like a smart friend - casual, direct, no corporate speak. Keep it under ${wordLimit} words. Vary your style each time. Sometimes be more analytical, sometimes more encouraging, sometimes more direct.`;
+}
 
 app.post("/chat", async (req, res) => {
   try {
     const { user_id, message } = req.body;
 
-    // Get conversation history from database
+    // Get conversation history
     const { data: history } = await supabase
       .from("memory")
       .select("message, response")
@@ -32,8 +69,13 @@ app.post("/chat", async (req, res) => {
       .order("created_at", { ascending: true })
       .limit(10);
 
-    // Build conversation context
-    const messages = [{ role: "system", content: SYSTEM_PROMPT }];
+    // Generate a fresh, random system prompt for each conversation
+    const dynamicPrompt = generateSystemPrompt();
+
+    // Build conversation context with random temperature
+    const randomTemperature = 0.6 + (Math.random() * 0.4); // 0.6 to 1.0 for variety
+    
+    const messages = [{ role: "system", content: dynamicPrompt }];
     
     // Add conversation history
     if (history && history.length > 0) {
@@ -43,14 +85,15 @@ app.post("/chat", async (req, res) => {
       });
     }
     
-    // Add current message
     messages.push({ role: "user", content: message });
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: messages,
-      temperature: 0.7,
-      max_tokens: 300
+      temperature: randomTemperature, // Dynamic temperature
+      max_tokens: 200, // Slightly more room for variety
+      presence_penalty: 0.3, // Encourage new topics/words
+      frequency_penalty: 0.3 // Reduce repetitive phrases
     });
     
     const botReply = completion.choices[0].message.content;
@@ -78,7 +121,7 @@ app.post("/chat", async (req, res) => {
 });
 
 app.get("/", (req, res) => {
-  res.json({ status: "Conversational AI Strategist is running!" });
+  res.json({ status: "Dynamic AI Strategist is running!" });
 });
 
 const PORT = process.env.PORT || 3000;
